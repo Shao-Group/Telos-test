@@ -1,0 +1,10 @@
+src/__pycache__/
+src/utils/__pycache__/
+data/
+out/
+features/
+data_train/
+configs/
+logs/
+models/
+reports/
