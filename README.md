@@ -10,7 +10,8 @@ Run src/test_all.py for testing on different datasets.
 
 ## ✍️ Author
 
-Developed by [Shao Lab](https://github.com/Shao-Group) as part of course project for CSE 566 at Penn State.
+Developed by [Shao Lab](https://github.com/Shao-Group) .
+
 
 ---
 
