@@ -127,9 +127,11 @@ def load_model(model_type, config):
         raise ValueError(f"Unsupported model type: {model_type}")
 
 
-def load_saved_model(model_type, model_path):
+def load_saved_model(model_type, model_path, config):
     if model_type == "xgboost":
-        return json.load(open(model_path))  
+        model = load_model(model_type, config)
+        model.load_model(model_path)
+        return model
     elif model_type == "randomforest":
         return joblib.load(model_path)
     else:

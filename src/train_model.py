@@ -101,9 +101,9 @@ def train_and_evaluate_stage1(df, model_type, model_config, project_config, site
 
     
     if model_type == "xgboost":
-        model.save_model(f"{project_config.models_output_dir}/{site_type}_xgb_model.json")
+        model.save_model(f"{project_config.models_output_dir}/{site_type}_{model_type}_model.json")
     elif model_type == "randomforest":
-        dump(model, os.path.join(project_config.models_output_dir, f"{site_type}_randomforest_model.joblib"))
+        dump(model, os.path.join(project_config.models_output_dir, f"{site_type}_{model_type}_model.joblib"))
 
     pr_data_path = os.path.join(project_config.pr_data_dir, f"{site_type}_{model_type}_pr_data.csv")
     metrics = evaluate_model(y_val, y_pred, y_prob, pr_data_path )
