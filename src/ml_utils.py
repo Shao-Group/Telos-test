@@ -62,9 +62,9 @@ def stratified_split(df, validation_chrom_file, label_col='label', ):
         for chrom in X_val['chrom'].unique():
             f.write(f"{chrom}\n")
 
-    print(f"Train size: {X_train.shape}, Validation size: {X_val.shape}")
-    print(f"Train label distribution: {y_train.value_counts(normalize=True)}")
-    print(f"Validation label distribution: {y_val.value_counts(normalize=True)}")
+    # print(f"Train size: {X_train.shape}, Validation size: {X_val.shape}")
+    # print(f"Train label distribution: {y_train.value_counts(normalize=True)}")
+    # print(f"Validation label distribution: {y_val.value_counts(normalize=True)}")
     return X_train, X_val, y_train, y_val
     
 

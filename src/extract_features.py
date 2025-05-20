@@ -216,7 +216,7 @@ def main(cfg, config_path):
     tes_feature_list = [extract_features(bam, *site, cfg) for site in tqdm(tes_candidate_sites, desc="TES Feature Extraction")]
     features_df = pd.DataFrame(tes_feature_list)
     features_df.to_csv(cfg.tes_feature_file, index=False)
-
+    save_config(config_path)
     
     print("Feature extraction complete! Output saved as 'candidate_site_features.csv'.")
 

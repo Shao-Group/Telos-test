@@ -33,9 +33,11 @@ def install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tm
     )
     print("Configuration created.")
     print(f"Saving configuration to 'project_config/{prefix}_config.pkl'...")
-    save_config(f"project_config/{prefix}_config.pkl")
-    print("Configuration saved to config.pkl.")
+    config_file = f"project_config/{prefix}_config.pkl"
+    save_config(config_file)
+    print(f"Configuration saved to {config_file}.")
 
+    return config_file
     # Add your installation logic here
 
 
