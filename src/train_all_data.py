@@ -3,7 +3,7 @@ from install import install
 import subprocess
 import os
 
-RNASEQ_DIR = "/datadisk1/ixk5174/tools/rnaseqtools"
+RNASEQ_DIR = "../../tools/rnaseqtools"
 OUTPUT_DIR = "train_output"
 GENCODE_REF = "data/GRCh38_gencode.gtf"
 ENSEMBLE_REF = "data/GRCh38_ensembl.gtf"
