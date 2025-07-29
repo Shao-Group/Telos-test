@@ -29,8 +29,8 @@ def generate_model_paths(model_folder):
     }
     model_paths.append(m1)
     m2 = {
-        "tss": os.path.join(model_folder, f"tss_xgb_model.json"),
-        "tes": os.path.join(model_folder, f"tes_xgb_model.json"),
+        "tss": os.path.join(model_folder, f"tss_xgboost_model.json"),
+        "tes": os.path.join(model_folder, f"tes_xgboost_model.json"),
         "stage2": os.path.join(model_folder, f"xgboost_stage2_model.json"),
         "model_type": "xgboost"
     }
@@ -146,9 +146,9 @@ def test_all():
                        "data/cv_pacbio_ENCFF694DIE/isoquant.isoquant.gtf.tmap",
                        "data/cv_SRR307911_hisat/scallop2.scallop2.gtf.tmap"],
         "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF],
-        "pretrained_model_folder1" : ["train_output/cDNA-NA1278_stringtie/models", "train_output/dNA-NA1278_stringtie/models",
+        "pretrained_model_folder1" : ["train_output/cDNA-NA12878_stringtie/models", "train_output/dRNA-NA12878_stringtie/models",
                                       "train_output/pacbio_ENCFF450VAU_stringtie/models", "train_output/SRR307903_stringtie/models"],
-        "pretrained_model_folder2" : ["train_output/cDNA-NA1278_isoquant/models", "train_output/dNA-NA1278_isoquant/models",
+        "pretrained_model_folder2" : ["train_output/cDNA-NA12878_isoquant/models", "train_output/dRNA-NA12878_isoquant/models",
                                       "train_output/pacbio_ENCFF450VAU_isoquant/models", "train_output/SRR307903_scallop2/models"]
 
     }

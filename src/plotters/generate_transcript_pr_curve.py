@@ -14,15 +14,14 @@ import numpy as np
 from config import Config, load_config
 from argparse import ArgumentParser
 
-TRANSCRIPT_PLOT_FOLDER = "plots/transcript_pr_curves"
+TRANSCRIPT_PLOT_FOLDER = "plots/transcript_pr_curves_compare"
 
-def plot_pr_curves(config:Config):
+def plot_pr_curves_on_subplot(config: Config, ax, title_prefix=""):
     """
     Reads all ROC-like files in the specified folder, parses sensitivity (recall)
-    and precision values, and plots Precision-Recall curves for each file.
+    and precision values, and plots Precision-Recall curves on the given subplot axis.
     """
     tool = config.data_name.split('_')[-1]
-    plt.figure(figsize=(6, 4))
 
     # get auc map where key is the tool name and value is the auc in the two column csv
     auc_map = {}
@@ -58,18 +57,13 @@ def plot_pr_curves(config:Config):
         label = label.replace('Updated Cov', '' ) # '\n(Updated Coverage)')
         label = label.replace('Aupr', 'AuPR')
         
-        plt.plot(recalls, precisions, label=label)
+        ax.plot(recalls, precisions, label=label)
 
-
-    plt.xlabel('Recall (%)')
-    plt.ylabel('Precision (%)')
-    # plt.title('Precision-Recall Curves')
-    plt.legend(loc='lower left', fontsize=11)
-    plt.grid(False)
-    plt.tight_layout()
-    plt.savefig(f'{TRANSCRIPT_PLOT_FOLDER}/pr_curves_compare_{config.data_name}.pdf', format='pdf', dpi=300, bbox_inches='tight')
-
-
+    ax.set_xlabel('Recall (%)', fontsize=12)
+    ax.set_ylabel('Precision (%)', fontsize=12)
+    ax.set_title(f'{title_prefix} - {config.data_name.split("_")[0]}', fontsize=14)
+    ax.legend(loc='lower left', fontsize=11 )
+    ax.grid(False)
 
 def main():
     # Load the configuration file
@@ -78,18 +72,38 @@ def main():
     parser.add_argument('--config_folder', required=True, help='Path to the configuration file')
     args = parser.parse_args()
 
-    train_prefix = ["cDNA-NA1278","dNA-NA1278", "pacbio_ENCFF450VAU", "SRR307903"]
+    train_prefix = ["cDNA-NA12878","dRNA-NA12878", "pacbio_ENCFF450VAU", "SRR307903"]
     test_prefix = ["cDNA-K562","dRNA-Hek293T", "pacbio_ENCFF694DIE", "SRR307911"]
-    for p in train_prefix + test_prefix:
-        prefix1 = (p + "_stringtie")
-        prefix2 = (p + "_isoquant") if not p.startswith("SRR") else (p + "_scallop2")
-        config1 = load_config(os.path.join(args.config_folder, f"{prefix1}_config.pkl"))
-        config2 = load_config(os.path.join(args.config_folder, f"{prefix2}_config.pkl"))
-
-        plot_pr_curves(config1)
-        plot_pr_curves(config2)
-
-        print(f"Finished plotting PR curve for {p}")
+    
+    # Create pairs of datasets
+    for i, (train_p, test_p) in enumerate(zip(train_prefix, test_prefix)):
+        # Create a figure with 2x2 subplots
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        # fig.suptitle(f'PR Curves Comparison: {train_p} (Train) vs {test_p} (Test)', fontsize=18, fontweight="bold")
+        
+        # Training datasets - top row
+        train_prefix1 = (train_p + "_stringtie")
+        train_prefix2 = (train_p + "_isoquant") if not train_p.startswith("SRR") else (train_p + "_scallop2")
+        train_config1 = load_config(os.path.join(args.config_folder, f"{train_prefix1}_config.pkl"))
+        train_config2 = load_config(os.path.join(args.config_folder, f"{train_prefix2}_config.pkl"))
+        
+        plot_pr_curves_on_subplot(train_config1, axes[0, 0], "Training Dataset")
+        plot_pr_curves_on_subplot(train_config2, axes[0, 1], "Training Dataset")
+        
+        # Testing datasets - bottom row
+        test_prefix1 = (test_p + "_stringtie")
+        test_prefix2 = (test_p + "_isoquant") if not test_p.startswith("SRR") else (test_p + "_scallop2")
+        test_config1 = load_config(os.path.join(args.config_folder, f"{test_prefix1}_config.pkl"))
+        test_config2 = load_config(os.path.join(args.config_folder, f"{test_prefix2}_config.pkl"))
+        
+        plot_pr_curves_on_subplot(test_config1, axes[1, 0], "Testing Dataset")
+        plot_pr_curves_on_subplot(test_config2, axes[1, 1], "Testing Dataset")
+        
+        plt.tight_layout()
+        plt.savefig(f'{TRANSCRIPT_PLOT_FOLDER}/pr_curves_compare_{train_p}_vs_{test_p}.pdf', format='pdf', dpi=300, bbox_inches='tight')
+        plt.close()  # Close the figure to free memory
+        
+        print(f"Finished plotting PR curve comparison for {train_p} (train) vs {test_p} (test)")
 
 
 if __name__ == "__main__":

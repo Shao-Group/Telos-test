@@ -22,11 +22,11 @@ def get_tools(data_name):
 
 # —— USER SETTINGS ——
 data_names = [
-    "cDNA-NA1278","dNA-NA1278", "pacbio_ENCFF450VAU", "SRR307903"
+    "cDNA-NA12878","dRNA-NA12878", "pacbio_ENCFF450VAU", "SRR307903"
 ]
 name_dict = {
-    "cDNA-NA1278" : "NA12878 cDNA",
-    "dNA-NA1278" : "NA12878 dRNA",
+    "cDNA-NA12878" : "NA12878 cDNA",
+    "dRNA-NA12878" : "NA12878 dRNA",
     "pacbio_ENCFF450VAU": "ENCFF450VAU",
     "SRR307903" : "SRR307903"
 }
@@ -78,16 +78,16 @@ def plot_feature_importance(config_folder):
 
             # formatting
             ax.set_xticks(x)
-            ax.set_xticklabels(features, rotation=45, ha="right", fontsize=12)
-            ax.set_title(f"{name_dict[name]} — {site.upper()}", fontsize=14)
+            ax.set_xticklabels(features, rotation=45, ha="right", fontsize=14)
+            ax.set_title(f"{name_dict[name]} — {site.upper()}", fontsize=16, fontweight="bold")
             if j == 0:
                 ax.set_ylabel("Importance", fontsize=12)
-            ax.tick_params(axis="y", labelsize=10)
+            ax.tick_params(axis="y", labelsize=12)
 
     # single legend on top
     handles, labels = axes[0, -1].get_legend_handles_labels()
     fig.legend(handles, labels,
-            loc="upper center", ncol=len(tools), fontsize=14)
+            loc="upper center", ncol=len(tools), fontsize=16)
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
 

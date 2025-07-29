@@ -9,3 +9,5 @@ logs/
 models/
 reports/
 old_src/
+*output*/
+plots/

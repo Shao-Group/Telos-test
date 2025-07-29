@@ -14,11 +14,11 @@ from config import load_config, Config
 
 # —— USER SETTINGS ——
 data_names = [
-    "cDNA-NA1278","dNA-NA1278", "pacbio_ENCFF450VAU", "SRR307903"
+    "cDNA-NA12878","dRNA-NA12878", "pacbio_ENCFF450VAU", "SRR307903"
 ]
 name_dict = {
-    "cDNA-NA1278" : "NA12878 cDNA",
-    "dNA-NA1278" : "NA12878 dRNA",
+    "cDNA-NA12878" : "NA12878 cDNA",
+    "dRNA-NA12878" : "NA12878 dRNA",
     "pacbio_ENCFF450VAU": "ENCFF450VAU",
     "SRR307903" : "SRR307903"
 }
@@ -95,7 +95,7 @@ def plot_pr(config_folder):
             if j == 0:
                 ax.set_ylabel("Precision", fontsize=10)
             # ax.tick_params(labelsize= nine)  # increase tick labels if you wish
-            ax.legend(fontsize=8, loc="lower left")
+            ax.legend(fontsize=12, loc="lower left")
 
     plt.tight_layout()
     plt.savefig(os.path.join(STAGE1_PR_PLOT_FOLDER,"all_pr_curves_grid.pdf"), dpi=300, format="pdf", bbox_inches="tight")
