@@ -45,12 +45,13 @@ class Config:
         self.pr_data_dir            = os.path.join(self.reports_output_dir, "pr_data")
         self.feature_importance_dir = os.path.join(self.reports_output_dir, "feature_importance")
         self.gffcompare_dir        = os.path.join(self.reports_output_dir, "gffcompare")
+        self.metrics_output_dir    = os.path.join(self.reports_output_dir, "metrics")
 
         for d in (self.data_output_dir, self.features_output_dir,
                   self.reports_output_dir, self.predictions_output_dir,
                   self.models_output_dir, self.pr_data_dir,
                   self.feature_importance_dir, self.gffcompare_dir, 
-                  self.transcript_pr_data, self.updated_cov_dir):
+                  self.transcript_pr_data, self.updated_cov_dir, self.metrics_output_dir):
             os.makedirs(d, exist_ok=True)
 
 

@@ -27,7 +27,7 @@ def train_data(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf,
         print(f"Running extract_features.py for {prefix}...")
         p = subprocess.run(
             ["python", "src/extract_features.py", "--config", config_file_path],
-             capture_output=True, text=True, check=True
+             capture_output=True, text=True, check=False
         )
         log.write(p.stdout)
         log.write(p.stderr)
@@ -151,7 +151,7 @@ def init_parallel():
         dataset_tasks.append(row_data)
     
     # Process datasets in parallel (max 2 concurrent datasets to avoid overwhelming system)
-    max_concurrent_datasets = min(2, len(dataset_tasks))
+    max_concurrent_datasets = min(4, len(dataset_tasks))
     print(f"🚀 Starting parallel processing with {max_concurrent_datasets} concurrent datasets...")
     
     with ProcessPoolExecutor(max_workers=max_concurrent_datasets) as executor:

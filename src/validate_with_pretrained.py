@@ -86,7 +86,7 @@ def validate_stage2(df_tss, df_tes, project_config, model_type, pretrained_model
 
 
 def validate_stage1(df, model_type, model_config, project_config, pretrained_model, site_type):
-    drop = ["chrom", "position", "strand", "label" , "soft_clip_entropy"]
+    drop = ["chrom", "position", "strand", "label"]
 
     X_train, X_val, y_train, y_val = stratified_split(df, validation_chrom_file=project_config.validation_chromosomes_file)
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()

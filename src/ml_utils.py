@@ -89,12 +89,12 @@ def stratified_split(df, validation_chrom_file, label_col='label', return_mask=F
 
 def evaluate_model(y_true, y_pred, y_prob, prdata_path, plot_path=None):
     precision, recall, _ = precision_recall_curve(y_true, y_prob)
-    f1 = f1_score(y_true, y_pred)
-    aupr = average_precision_score(y_true, y_prob)
-    auc = roc_auc_score(y_true, y_prob)
+    f1 = f1_score(y_true, y_pred, average='macro')
+    aupr = average_precision_score(y_true, y_prob, average='macro')
+    auc = roc_auc_score(y_true, y_prob, average='macro')
     acc = accuracy_score(y_true, y_pred)
-    prec = precision_score(y_true, y_pred, zero_division=0)
-    rec = recall_score(y_true, y_pred)
+    prec = precision_score(y_true, y_pred, zero_division=0, average='macro')
+    rec = recall_score(y_true, y_pred, average='macro')
     cm = confusion_matrix(y_true, y_pred)
 
     report_dict = classification_report(y_true, y_pred, digits=4, output_dict=True)

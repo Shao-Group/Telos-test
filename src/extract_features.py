@@ -2,10 +2,11 @@ import argparse
 import pysam
 import pandas as pd
 import numpy as np
-from collections import Counter
+from collections import Counter, OrderedDict
 from config import load_config, save_config
 import math
 import os
+import re
 from tqdm import tqdm
 from scipy.stats import entropy
 import gen_baseline_labels as gen_baseline_labels
@@ -35,7 +36,8 @@ def extract_features(bam, chrom, pos, strand, cfg):
     region_end = pos + cfg.window_size
     reads = bam.fetch(chrom, region_start, region_end)
 
-    read_starts, read_ends, soft_clips, map_quals = [], [], [], []
+    read_starts, read_ends, start_soft_clips, end_soft_clips, map_quals = [], [], [], [], []
+    start_clip_sequences, end_clip_sequences = [], []
     strand_count = Counter()
     total_reads = 0
 
@@ -43,53 +45,135 @@ def extract_features(bam, chrom, pos, strand, cfg):
         if read.is_unmapped or read.mapping_quality < cfg.min_mapq:
             continue
         total_reads += 1
-        read_starts.append(read.reference_start)
-        read_ends.append(read.reference_end)
-        map_quals.append(read.mapping_quality)
-        strand_count["+" if not read.is_reverse else "-"] += 1
-
-        if read.cigartuples:
+        read_strand = compute_strand(read)
+        left_soft_clip_length = 0
+        right_soft_clip_length = 0
+        left_soft_clip_seq = ""
+        right_soft_clip_seq = ""
+        
+        if read.cigartuples and read.query_sequence:
             if read.cigartuples[0][0] == 4:  # Soft clip at start
-                soft_clips.append(read.cigartuples[0][1])
+                left_soft_clip_length = read.cigartuples[0][1]
+                left_soft_clip_seq = read.query_sequence[:left_soft_clip_length]
             if read.cigartuples[-1][0] == 4:  # Soft clip at end
-                soft_clips.append(read.cigartuples[-1][1])
+                right_soft_clip_length = read.cigartuples[-1][1]
+                right_soft_clip_seq = read.query_sequence[-right_soft_clip_length:]
+
+        if read_strand == "+":
+            read_starts.append(read.reference_start)
+            read_ends.append(read.reference_end)
+            start_soft_clips.append(left_soft_clip_length)
+            end_soft_clips.append(right_soft_clip_length)
+            if left_soft_clip_seq and abs(read.reference_start - pos) <= cfg.soft_clip_window:
+                start_clip_sequences.append(left_soft_clip_seq)
+            if right_soft_clip_seq and abs(read.reference_end - pos) <= cfg.soft_clip_window:
+                end_clip_sequences.append(right_soft_clip_seq)
+            
+        else:
+            read_starts.append(read.reference_end)
+            read_ends.append(read.reference_start)
+            start_soft_clips.append(right_soft_clip_length)
+            end_soft_clips.append(left_soft_clip_length)
+            if right_soft_clip_seq and abs(read.reference_end - pos) <= cfg.soft_clip_window:
+                start_clip_sequences.append(right_soft_clip_seq)
+            if left_soft_clip_seq and abs(read.reference_start - pos) <= cfg.soft_clip_window:
+                end_clip_sequences.append(left_soft_clip_seq)
+
+        map_quals.append(read.mapping_quality)
+        if read_strand == strand:
+            strand_count["forward"] += 1
+        else:
+            strand_count["reverse"] += 1
+
+    
 
     window_radius = cfg.density_window
     read_start_density = sum(1 for s in read_starts if abs(s - pos) <= window_radius)
     read_end_density   = sum(1 for e in read_ends if abs(e - pos) <= window_radius)
 
     
-    coverage_before, coverage_after, delta_coverage = calculate_coverage_change(bam, chrom, pos, cfg)
+    coverage_before, coverage_after, delta_coverage = calculate_coverage_change(bam, chrom, pos, cfg, strand)
     nearest_splice = find_nearest_splice_site(bam, chrom, pos, cfg)
-    softclip_bias = soft_clip_bias(bam, chrom, pos, cfg)
+    soft_clip_bias_value = soft_clip_bias(bam, chrom, pos, cfg, strand)
     start_entropy, end_entropy = read_start_end_entropy(read_starts, read_ends, pos, cfg)
-    return {
+    
+    # Use soft-clipped sequences collected during main loop
+    all_clips = start_clip_sequences + end_clip_sequences
+    
+    # Extract pattern-based features
+    kmer_features = softclip_kmer_features(all_clips)
+    motif_features = softclip_motif_features(all_clips)
+    start_comp_features = softclip_composition_features(start_clip_sequences, "start_")
+    end_comp_features = softclip_composition_features(end_clip_sequences, "end_")
+    start_homo_features = softclip_homopolymer_features(start_clip_sequences, "start_")
+    end_homo_features = softclip_homopolymer_features(end_clip_sequences, "end_")
+    
+    # Base features
+    features = {
         "chrom": chrom,
         "position": pos,
         "strand": strand,
         "total_reads": total_reads,
         "read_start_density": read_start_density,
         "read_end_density": read_end_density,
-        "soft_clip_mean": np.mean(soft_clips) if soft_clips else 0,
-        "soft_clip_max": max(soft_clips) if soft_clips else 0,
-        "soft_clip_median": np.median(soft_clips) if soft_clips else 0,
-        "soft_clip_count": len(soft_clips),
-        "soft_clip_entropy": softclip_entropy(reads, pos, cfg.soft_clip_window),
+        "start_soft_clip_mean": np.mean(start_soft_clips) if start_soft_clips else 0,
+        "end_soft_clip_mean": np.mean(end_soft_clips) if end_soft_clips else 0,
+        "start_soft_clip_max": max(start_soft_clips) if start_soft_clips else 0,
+        "end_soft_clip_max": max(end_soft_clips) if end_soft_clips else 0,
+        "start_soft_clip_median": np.median(start_soft_clips) if start_soft_clips else 0,
+        "end_soft_clip_median": np.median(end_soft_clips) if end_soft_clips else 0,
+        "start_soft_clip_count": len(start_soft_clips),
+        "end_soft_clip_count": len(end_soft_clips),
         "mean_mapq": np.mean(map_quals) if map_quals else 0,
         "std_mapq": np.std(map_quals) if map_quals else 0,
-        "strand_ratio": strand_count["+"] / max(strand_count["-"], 1),
+        "strand_ratio": strand_count["forward"] / max(strand_count["reverse"], 1),
         "coverage_before": coverage_before,
         "coverage_after": coverage_after,
         "delta_coverage": delta_coverage,
         "nearest_splice_dist": nearest_splice,
-        "softclip_bias": softclip_bias,
+        "softclip_bias": soft_clip_bias_value,
         "start_entropy": start_entropy,
         "end_entropy": end_entropy, 
         "full_length_reads": sum(1 for r in reads if r.reference_start < region_start + 10 and r.reference_end > region_end - 10)
     }
+    
+    # Add pattern-based features in consistent order
+    # 1. K-mer features (fixed kmers + stats + composition)
+    features.update(kmer_features)
+    # 2. Motif features
+    features.update(motif_features)
+    # 3. Composition features (start, then end)
+    features.update(start_comp_features)
+    features.update(end_comp_features)
+    # 4. Homopolymer features (start, then end)
+    features.update(start_homo_features)
+    features.update(end_homo_features)
+    
+    # Ensure absolute order consistency by sorting feature names
+    # Keep basic features first, then sort pattern-based features
+    basic_features = ['chrom', 'position', 'strand', 'total_reads', 'read_start_density', 
+                     'read_end_density', 'start_soft_clip_mean', 'end_soft_clip_mean',
+                     'start_soft_clip_max', 'end_soft_clip_max', 'start_soft_clip_median',
+                     'end_soft_clip_median', 'start_soft_clip_count', 'end_soft_clip_count',
+                     'mean_mapq', 'std_mapq', 'strand_ratio', 'coverage_before',
+                     'coverage_after', 'delta_coverage', 'nearest_splice_dist',
+                     'softclip_bias', 'start_entropy', 'end_entropy', 'full_length_reads']
+    
+    ordered_features = OrderedDict()
+    # Add basic features in predefined order
+    for key in basic_features:
+        if key in features:
+            ordered_features[key] = features[key]
+    
+    # Add remaining features in alphabetical order for consistency
+    remaining_keys = sorted([k for k in features.keys() if k not in basic_features])
+    for key in remaining_keys:
+        ordered_features[key] = features[key]
+    
+    return dict(ordered_features)
 
 
-def calculate_coverage_change(bam, chrom, pos, cfg):
+def calculate_coverage_change(bam, chrom, pos, cfg, strand):
     """Calculate coverage before and after the candidate site."""
     if pos < cfg.coverage_window:
         print(f"Warning: Position {pos} is too close to the start of the chromosome {chrom}.")
@@ -109,9 +193,11 @@ def calculate_coverage_change(bam, chrom, pos, cfg):
             chrom, pos, pos + cfg.coverage_window, quality_threshold=cfg.min_mapq)
         coverage_after = int(np.sum(region_after))
 
-
     delta_coverage = coverage_after - coverage_before
-    return coverage_before, coverage_after, delta_coverage
+    if strand == "+":
+        return coverage_before, coverage_after, delta_coverage
+    else:
+        return coverage_after, coverage_before, -delta_coverage
 
 def find_nearest_splice_site(bam, chrom, pos, cfg):
     """Find distance to the nearest splice junction (N CIGAR operation)."""
@@ -133,15 +219,18 @@ def find_nearest_splice_site(bam, chrom, pos, cfg):
                 curr_pos += length
     return min_distance
 
-def soft_clip_bias(bam, chrom, pos, cfg):
+def soft_clip_bias(bam, chrom, pos, cfg, strand):
     """Ratio of reads with soft-clip starting exactly at the site."""
     soft_clip_count = 0
     total_reads = 0
     for read in bam.fetch(chrom, max(0, pos - cfg.soft_clip_window), pos + cfg.soft_clip_window):
-        if read.is_unmapped or read.mapping_quality < cfg.min_mapq or not read.cigartuples:
+        read_strand = compute_strand(read)
+        if read.is_unmapped or read.mapping_quality < cfg.min_mapq or not read.cigartuples or read_strand != strand:
             continue
         total_reads += 1
         if read.cigartuples[0][0] == 4 and abs(read.reference_start - pos) <= 5:
+            soft_clip_count += 1
+        elif read.cigartuples[-1][0] == 4 and abs(read.reference_end - pos) <= 5:
             soft_clip_count += 1
     return soft_clip_count / total_reads if total_reads else 0
 
@@ -155,28 +244,223 @@ def calculate_entropy(positions):
     entropy = -sum((freq/total) * math.log2(freq/total) for freq in count.values())
     return entropy
 
-def softclip_entropy(reads, pos, window=5):
-    clipped_bases = []
-    for r in reads:
-        if not r.cigartuples: continue
-        if r.cigartuples[0][0] == 4 and abs(r.reference_start - pos) <= window:
-            clipped_bases.extend(r.query_sequence[:r.cigartuples[0][1]])
-        if r.cigartuples[-1][0] == 4 and abs(r.reference_end - pos) <= window:
-            clipped_bases.extend(r.query_sequence[-r.cigartuples[-1][1]:])
-    if not clipped_bases:
-        return 0
-    return entropy(Counter(clipped_bases).values(), base=2)
+def softclip_fixed_kmer_features(clipped_sequences, k=3):
+    """Use a fixed set of biologically relevant k-mers."""
+    # Define fixed vocabulary of important k-mers for TSS/TES (sorted for consistency)
+    fixed_kmers = sorted([
+        'ATG', 'TAA', 'TGA', 'TAG',  # Start/stop codons
+        'GCC', 'CGC', 'GCG',        # GC-rich
+        'AAA', 'TTT', 'AAT',        # AT-rich  
+        'GTG', 'CAG', 'GAG',        # Common codons
+        'CCC', 'GGG', 'CCG'         # Other patterns
+    ])
+    
+    if not clipped_sequences:
+        # Return in sorted order for consistency
+        return {f'kmer_{kmer}': 0 for kmer in fixed_kmers}
+    
+    kmer_counts = Counter()
+    for seq in clipped_sequences:
+        seq = seq.upper()
+        for i in range(len(seq) - k + 1):
+            kmer = seq[i:i+k]
+            if kmer in fixed_kmers:
+                kmer_counts[kmer] += 1
+    
+    # Return in sorted order for consistency
+    return {f'kmer_{kmer}': kmer_counts.get(kmer, 0) for kmer in fixed_kmers}
+
+def softclip_kmer_stats(clipped_sequences, k=3):
+    """Extract statistical features from k-mer distribution."""
+    # Define feature names in consistent order
+    feature_names = [
+        'gc_kmers_ratio',
+        'kmer_diversity', 
+        'kmer_entropy',
+        'most_frequent_kmer_ratio',
+        'unique_kmers'
+    ]
+    
+    if not clipped_sequences:
+        return {name: 0 for name in feature_names}
+    
+    kmer_counts = Counter()
+    total_kmers = 0
+    gc_kmers = 0
+    
+    for seq in clipped_sequences:
+        seq = seq.upper()
+        for i in range(len(seq) - k + 1):
+            kmer = seq[i:i+k]
+            if all(base in 'ATGC' for base in kmer):  # Valid nucleotides only
+                kmer_counts[kmer] += 1
+                total_kmers += 1
+                if (kmer.count('G') + kmer.count('C')) >= k/2:
+                    gc_kmers += 1
+    
+    if total_kmers == 0:
+        return {name: 0 for name in feature_names}
+    
+    # Calculate statistics
+    unique_kmers = len(kmer_counts)
+    diversity = unique_kmers / total_kmers if total_kmers > 0 else 0
+    most_frequent_count = max(kmer_counts.values()) if kmer_counts else 0
+    most_frequent_ratio = most_frequent_count / total_kmers if total_kmers > 0 else 0
+    
+    # Shannon entropy
+    probs = [count / total_kmers for count in kmer_counts.values()]
+    kmer_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
+    
+    # Return in consistent order
+    return {
+        'gc_kmers_ratio': gc_kmers / total_kmers if total_kmers > 0 else 0,
+        'kmer_diversity': diversity,
+        'kmer_entropy': kmer_entropy,
+        'most_frequent_kmer_ratio': most_frequent_ratio, 
+        'unique_kmers': unique_kmers
+    }
+
+def softclip_kmer_composition(clipped_sequences, k=3):
+    """Count k-mers by composition type."""
+    # Define feature names in consistent order
+    feature_names = [
+        'at_rich_kmers',       # >60% AT  
+        'balanced_kmers',      # 40-60% GC
+        'gc_rich_kmers',       # >60% GC
+        'purine_rich_kmers',   # >60% A+G
+        'repeat_kmers'         # All same nucleotide
+    ]
+    
+    if not clipped_sequences:
+        return {name: 0 for name in feature_names}
+    
+    composition_counts = {name: 0 for name in feature_names}
+    
+    for seq in clipped_sequences:
+        seq = seq.upper()
+        for i in range(len(seq) - k + 1):
+            kmer = seq[i:i+k]
+            if all(base in 'ATGC' for base in kmer):  # Valid nucleotides only
+                gc_content = (kmer.count('G') + kmer.count('C')) / k
+                purine_content = (kmer.count('A') + kmer.count('G')) / k
+                
+                if len(set(kmer)) == 1:  # All same nucleotide
+                    composition_counts['repeat_kmers'] += 1
+                elif gc_content > 0.6:
+                    composition_counts['gc_rich_kmers'] += 1
+                elif gc_content < 0.4:
+                    composition_counts['at_rich_kmers'] += 1
+                else:
+                    composition_counts['balanced_kmers'] += 1
+                    
+                if purine_content > 0.6:
+                    composition_counts['purine_rich_kmers'] += 1
+    
+    # Return in consistent order
+    return {name: composition_counts[name] for name in feature_names}
+
+def softclip_kmer_features(clipped_sequences, k=3):
+    """Hybrid approach: combine fixed k-mers with statistical features."""
+    fixed_features = softclip_fixed_kmer_features(clipped_sequences, k)
+    stats_features = softclip_kmer_stats(clipped_sequences, k) 
+    composition_features = softclip_kmer_composition(clipped_sequences, k)
+    
+    # Combine all features in consistent order
+    combined = {}
+    # 1. First add fixed k-mers (already sorted)
+    combined.update(fixed_features)
+    # 2. Then add statistical features (already ordered)
+    combined.update(stats_features)
+    # 3. Finally add composition features (already ordered)
+    combined.update(composition_features)
+    
+    return combined
+
+def softclip_composition_features(clipped_sequences, prefix=""):
+    """Calculate nucleotide composition features."""
+    # Define feature names in consistent order
+    feature_names = [
+        f'{prefix}at_content',
+        f'{prefix}gc_content', 
+        f'{prefix}purine_ratio'
+    ]
+    
+    if not clipped_sequences:
+        return {name: 0 for name in feature_names}
+    
+    all_bases = ''.join(clipped_sequences)
+    total = len(all_bases)
+    if total == 0:
+        return {name: 0 for name in feature_names}
+    
+    # Return in consistent order
+    return {
+        f'{prefix}at_content': (all_bases.count('A') + all_bases.count('T')) / total,
+        f'{prefix}gc_content': (all_bases.count('G') + all_bases.count('C')) / total,
+        f'{prefix}purine_ratio': (all_bases.count('A') + all_bases.count('G')) / total
+    }
+
+def softclip_motif_features(clipped_sequences):
+    """Detect biologically relevant motifs in soft-clipped sequences."""
+    # Define feature names in consistent order
+    feature_names = [
+        'cg_rich',
+        'polyA_signals',
+        'splice_signals',
+        'tata_like'
+    ]
+    
+    if not clipped_sequences:
+        return {name: 0 for name in feature_names}
+    
+    # Count relevant motifs
+    polyA_count = len([seq for seq in clipped_sequences if 'AAAA' in seq.upper()])
+    tata_count = len([seq for seq in clipped_sequences if 'TATA' in seq.upper()])
+    splice_count = len([seq for seq in clipped_sequences if 'GT' in seq.upper() or 'AG' in seq.upper()])
+    cg_rich_count = len([seq for seq in clipped_sequences if seq.upper().count('CG') >= 2])
+    
+    # Return in consistent order
+    return {
+        'cg_rich': cg_rich_count,
+        'polyA_signals': polyA_count,
+        'splice_signals': splice_count,
+        'tata_like': tata_count
+    }
+
+def softclip_homopolymer_features(clipped_sequences, prefix=""):
+    """Detect homopolymer runs in soft-clipped sequences."""
+    # Define feature names in consistent order
+    bases = ['A', 'C', 'G', 'T']  # Alphabetical order
+    
+    if not clipped_sequences:
+        return {f'{prefix}max_poly{base}': 0 for base in bases}
+    
+    runs = {base: 0 for base in bases}
+    
+    for seq in clipped_sequences:
+        seq = seq.upper()
+        for base in bases:
+            matches = re.findall(f'{base}+', seq)
+            if matches:
+                max_run = max(len(match) for match in matches)
+                runs[base] = max(runs[base], max_run)
+    
+    # Return in consistent order
+    return {f'{prefix}max_poly{base}': runs[base] for base in bases}
 
 
 def compute_strand(read):
-    ts = read.get_tag("ts")
-    if ts not in ["+", "-"]:
-        # raise ValueError(f"Invalid strand tag: {ts}")
-        return "."
-    if read.is_reverse:
-        return "-" if ts == "+" else "+"
-    else:
-        return "+" if ts == "+" else "-"
+    try:
+        ts = read.get_tag("ts")
+        if ts not in ["+", "-"]:
+            return "."
+        if read.is_reverse:
+            return "-" if ts == "+" else "+"
+        else:
+            return "+" if ts == "+" else "-"
+    except KeyError:
+        # No ts tag present, infer from read orientation
+        return "-" if read.is_reverse else "+"
 
 def read_start_end_entropy(start_positions, end_positions, pos, cfg):
     """Entropy around read start and end positions."""
@@ -199,13 +483,13 @@ def main(cfg, config_path):
     tss_candidate_sites, tes_candidate_sites = load_candidate_sites(cfg.candidate_file)
     
     # Collect features
-    if os.path.exists(cfg.tss_feature_file) and os.path.exists(cfg.tes_feature_file):
-        print(f"Feature files already exist: {cfg.tss_feature_file}, {cfg.tes_feature_file}")
-        # Close the BAM file
-        bam.close()
-        save_config(config_path)
+    # if os.path.exists(cfg.tss_feature_file) and os.path.exists(cfg.tes_feature_file):
+    #     print(f"Feature files already exist: {cfg.tss_feature_file}, {cfg.tes_feature_file}")
+    #     # Close the BAM file
+    #     bam.close()
+    #     save_config(config_path)
 
-        return
+    #     return
 
     print("Extracting TSS candidate features...")
     tss_feature_list = [extract_features(bam, *site, cfg) for site in tqdm(tss_candidate_sites, desc="TSS Feature Extraction")]

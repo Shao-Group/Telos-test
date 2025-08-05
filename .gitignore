@@ -11,3 +11,4 @@ reports/
 old_src/
 *output*/
 plots/
+project_config/*pkl
