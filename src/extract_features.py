@@ -5,11 +5,14 @@ import numpy as np
 from collections import Counter, OrderedDict
 from config import load_config, save_config
 import math
-import os
+import sys
 import re
+import gc
 from tqdm import tqdm
 from scipy.stats import entropy
 import gen_baseline_labels as gen_baseline_labels
+# from sequence_embeddings import get_embedder, cleanup_embedder
+from kmer_embeddings import get_separate_kmer_embedders, cleanup_kmer_embedders
 
 
 def load_candidate_sites(file_path):
@@ -100,14 +103,6 @@ def extract_features(bam, chrom, pos, strand, cfg):
     # Use soft-clipped sequences collected during main loop
     all_clips = start_clip_sequences + end_clip_sequences
     
-    # Extract pattern-based features
-    kmer_features = softclip_kmer_features(all_clips)
-    motif_features = softclip_motif_features(all_clips)
-    start_comp_features = softclip_composition_features(start_clip_sequences, "start_")
-    end_comp_features = softclip_composition_features(end_clip_sequences, "end_")
-    start_homo_features = softclip_homopolymer_features(start_clip_sequences, "start_")
-    end_homo_features = softclip_homopolymer_features(end_clip_sequences, "end_")
-    
     # Base features
     features = {
         "chrom": chrom,
@@ -137,17 +132,36 @@ def extract_features(bam, chrom, pos, strand, cfg):
         "full_length_reads": sum(1 for r in reads if r.reference_start < region_start + 10 and r.reference_end > region_end - 10)
     }
     
-    # Add pattern-based features in consistent order
-    # 1. K-mer features (fixed kmers + stats + composition)
-    features.update(kmer_features)
-    # 2. Motif features
-    features.update(motif_features)
-    # 3. Composition features (start, then end)
-    features.update(start_comp_features)
-    features.update(end_comp_features)
-    # 4. Homopolymer features (start, then end)
-    features.update(start_homo_features)
-    features.update(end_homo_features)
+    # Add sequence-based features (embeddings or handcrafted)
+    if hasattr(cfg, 'use_embeddings') and cfg.use_embeddings:
+        if hasattr(cfg, 'embedding_mode') and cfg.embedding_mode == 'hybrid':
+            # Use hybrid approach: embeddings + key handcrafted features
+            sequence_features = extract_hybrid_features(start_clip_sequences, end_clip_sequences, cfg)
+        else:
+            # Use pure embeddings approach
+            raise NotImplementedError("Pure embeddings approach is not implemented yet")
+            # sequence_features = extract_sequence_embeddings(start_clip_sequences, end_clip_sequences, cfg)
+        features.update(sequence_features)
+    else:
+        # Use original handcrafted features
+        kmer_features = softclip_kmer_features(all_clips)
+        motif_features = softclip_motif_features(all_clips)
+        start_comp_features = softclip_composition_features(start_clip_sequences, "start_")
+        end_comp_features = softclip_composition_features(end_clip_sequences, "end_")
+        start_homo_features = softclip_homopolymer_features(start_clip_sequences, "start_")
+        end_homo_features = softclip_homopolymer_features(end_clip_sequences, "end_")
+        
+        # Add pattern-based features in consistent order
+        # 1. K-mer features (fixed kmers + stats + composition)
+        features.update(kmer_features)
+        # 2. Motif features
+        features.update(motif_features)
+        # 3. Composition features (start, then end)
+        features.update(start_comp_features)
+        features.update(end_comp_features)
+        # 4. Homopolymer features (start, then end)
+        features.update(start_homo_features)
+        features.update(end_homo_features)
     
     # Ensure absolute order consistency by sorting feature names
     # Keep basic features first, then sort pattern-based features
@@ -449,6 +463,203 @@ def softclip_homopolymer_features(clipped_sequences, prefix=""):
     return {f'{prefix}max_poly{base}': runs[base] for base in bases}
 
 
+def extract_kmer_embeddings(start_clip_sequences, end_clip_sequences, cfg, site_type):
+    """Extract k-mer embeddings from soft-clipped sequences."""
+    try:
+        # Get the appropriate k-mer embedders
+        start_tss, start_tes, end_tss, end_tes = get_separate_kmer_embedders()
+        
+        # Determine which embedders to use based on site type
+        if site_type.upper() == 'TSS':
+            start_embedder = start_tss
+            end_embedder = end_tss
+        elif site_type.upper() == 'TES':
+            start_embedder = start_tes
+            end_embedder = end_tes
+        else:
+            # Default to TSS embedders
+            start_embedder = start_tss
+            end_embedder = end_tss
+            print(f"Warning: Unknown site_type '{site_type}', using TSS embedders")
+        
+        # Generate embeddings for start and end clips
+        start_embedding = start_embedder.embed_site(start_clip_sequences)
+        end_embedding = end_embedder.embed_site(end_clip_sequences)
+        
+        # Create feature dictionary
+        features = {}
+        
+        # Add start k-mer embeddings
+        start_feature_names = start_embedder.get_feature_names()
+        for i, (name, val) in enumerate(zip(start_feature_names, start_embedding)):
+            features[f'start_kmer_{name}'] = float(val)
+        
+        # Add end k-mer embeddings  
+        end_feature_names = end_embedder.get_feature_names()
+        for i, (name, val) in enumerate(zip(end_feature_names, end_embedding)):
+            features[f'end_kmer_{name}'] = float(val)
+        
+        # Add combined statistics
+        combined_embedding = (start_embedding + end_embedding) / 2
+        for i, val in enumerate(combined_embedding):
+            features[f'combined_kmer_{i}'] = float(val)
+        
+        return features
+        
+    except Exception as e:
+        print(f"Warning: Could not extract k-mer embeddings: {e}")
+        # Return empty features on error
+        return {}
+
+
+# def extract_sequence_embeddings(start_clip_sequences, end_clip_sequences, cfg):
+#     """Extract learned embeddings from soft-clipped sequences using separate models."""
+#     # Determine embedding type
+#     embedding_type = getattr(cfg, 'embedding_type', 'cnn')
+#     embedding_dim = getattr(cfg, 'embedding_dim', 128)
+    
+#     if embedding_type == 'kmer':
+#         # Use k-mer embeddings
+#         site_type = getattr(cfg, 'current_site_type', 'TSS')  # Will be set during extraction
+#         return extract_kmer_embeddings(start_clip_sequences, end_clip_sequences, cfg, site_type)
+#     elif embedding_type == 'cnn':
+#         # Use CNN embeddings with separate models for start and end clips
+#         try:
+#             from sequence_cnn_embeddings import get_separate_cnn_embedders
+            
+#             # Get model paths for start and end clips
+#             start_model_path = getattr(cfg, 'cnn_start_model_path', None)
+#             end_model_path = getattr(cfg, 'cnn_end_model_path', None)
+            
+#             # Try to use separate models first
+#             if start_model_path and end_model_path:
+#                 start_embedder, end_embedder = get_separate_cnn_embedders(start_model_path, end_model_path)
+#                 print("Separate CNN embedders loaded successfully")
+                
+#                 # Get embeddings using separate models
+#                 start_embedding = start_embedder.aggregate_embeddings(start_clip_sequences, method="mean")
+#                 end_embedding = end_embedder.aggregate_embeddings(end_clip_sequences, method="mean")
+                
+#                 # Combined embedding (average of start and end embeddings)
+#                 combined_embedding = (start_embedding + end_embedding) / 2
+                
+#             else:
+#                 # Fallback to single model if separate models not available
+#                 print("Separate models not found, falling back to single CNN model")
+#                 from sequence_cnn_embeddings import get_cnn_embedder
+#                 model_path = getattr(cfg, 'cnn_model_path', None)
+#                 embedder = get_cnn_embedder(model_path)
+                
+#                 start_embedding = embedder.aggregate_embeddings(start_clip_sequences, method="mean")
+#                 end_embedding = embedder.aggregate_embeddings(end_clip_sequences, method="mean")
+                
+#                 # Combined embedding from all clips
+#                 all_clips = start_clip_sequences + end_clip_sequences
+#                 combined_embedding = embedder.aggregate_embeddings(all_clips, method="mean")
+                
+#         except Exception as e:
+#             print(f"Warning: Could not load CNN embedder: {e}")
+#             print("Falling back to zero embeddings")
+#             features = {}
+#             for i in range(embedding_dim):
+#                 features[f'start_embed_{i}'] = 0.0
+#                 features[f'end_embed_{i}'] = 0.0
+#                 features[f'combined_embed_{i}'] = 0.0
+#             return features
+#     else:
+#         # Use DNABERT embeddings (fallback)
+#         try:
+#             embedder = get_embedder()
+#             embedding_dim = 768  # DNABERT embedding dimension
+            
+#             start_embedding = embedder.aggregate_embeddings(start_clip_sequences, method="mean")
+#             end_embedding = embedder.aggregate_embeddings(end_clip_sequences, method="mean")
+            
+#             # Combined embedding from all clips
+#             all_clips = start_clip_sequences + end_clip_sequences
+#             combined_embedding = embedder.aggregate_embeddings(all_clips, method="mean")
+            
+#         except Exception as e:
+#             print(f"Warning: Could not load DNABERT embedder: {e}")
+#             print("Falling back to zero embeddings")
+#             features = {}
+#             for i in range(768):
+#                 features[f'start_embed_{i}'] = 0.0
+#                 features[f'end_embed_{i}'] = 0.0
+#                 features[f'combined_embed_{i}'] = 0.0
+#             return features
+    
+#     # Create feature dictionary with consistent naming
+#     try:
+#         features = {}
+        
+#         # Add start embeddings
+#         for i, val in enumerate(start_embedding):
+#             features[f'start_embed_{i}'] = float(val)
+            
+#         # Add end embeddings  
+#         for i, val in enumerate(end_embedding):
+#             features[f'end_embed_{i}'] = float(val)
+            
+#         # Add combined embeddings
+#         for i, val in enumerate(combined_embedding):
+#             features[f'combined_embed_{i}'] = float(val)
+            
+#         return features
+        
+#     except Exception as e:
+#         print(f"Warning: Error in embedding extraction: {e}")
+#         # Return zero embeddings on error
+#         features = {}
+#         for i in range(embedding_dim):
+#             features[f'start_embed_{i}'] = 0.0
+#             features[f'end_embed_{i}'] = 0.0
+#             features[f'combined_embed_{i}'] = 0.0
+#         return features
+
+
+def extract_hybrid_features(start_clip_sequences, end_clip_sequences, cfg):
+    """Extract both embeddings and key handcrafted features."""
+    # Get embeddings (could be CNN or k-mer based on cfg.embedding_type)
+    embedding_features = extract_kmer_embeddings(start_clip_sequences, end_clip_sequences, cfg, cfg.current_site_type)
+    
+    # Keep only the most important handcrafted features
+    all_clips = start_clip_sequences + end_clip_sequences
+    
+    # Basic sequence statistics
+    total_clip_length = sum(len(seq) for seq in all_clips)
+    avg_clip_length = np.mean([len(seq) for seq in all_clips]) if all_clips else 0
+    max_clip_length = max(len(seq) for seq in all_clips) if all_clips else 0
+    num_clips = len(all_clips)
+    
+    # Basic composition
+    if all_clips:
+        all_bases = ''.join(all_clips).upper()
+        total_bases = len(all_bases)
+        gc_content = (all_bases.count('G') + all_bases.count('C')) / total_bases if total_bases > 0 else 0
+        at_content = (all_bases.count('A') + all_bases.count('T')) / total_bases if total_bases > 0 else 0
+    else:
+        gc_content = 0
+        at_content = 0
+    
+    # Key handcrafted features
+    basic_features = {
+        'total_clip_length': total_clip_length,
+        'avg_clip_length': avg_clip_length,
+        'max_clip_length': max_clip_length,
+        'num_clips': num_clips,
+        'gc_content_basic': gc_content,
+        'at_content_basic': at_content,
+    }
+    
+    # Combine embeddings with basic features
+    features = {}
+    features.update(embedding_features)
+    features.update(basic_features)
+    
+    return features
+
+
 def compute_strand(read):
     try:
         ts = read.get_tag("ts")
@@ -492,14 +703,94 @@ def main(cfg, config_path):
     #     return
 
     print("Extracting TSS candidate features...")
-    tss_feature_list = [extract_features(bam, *site, cfg) for site in tqdm(tss_candidate_sites, desc="TSS Feature Extraction")]
-    features_df = pd.DataFrame(tss_feature_list)
-    features_df.to_csv(cfg.tss_feature_file, index=False)
+    # Set current site type for k-mer embeddings
+    cfg.current_site_type = 'TSS'
+    
+    # Process in batches to save memory
+    batch_size = 1000
+    total_sites = len(tss_candidate_sites)
+    
+    # Initialize CSV file with headers
+    first_batch = True
+    
+    for batch_start in range(0, total_sites, batch_size):
+        batch_end = min(batch_start + batch_size, total_sites)
+        batch_sites = tss_candidate_sites[batch_start:batch_end]
+        
+        print(f"Processing TSS batch {batch_start//batch_size + 1}/{(total_sites-1)//batch_size + 1} ({batch_start}-{batch_end-1})")
+        
+        # Extract features for this batch
+        batch_features = []
+        for idx, site in enumerate(batch_sites):
+            batch_features.append(extract_features(bam, *site, cfg))
+            if (batch_start + idx) % 500 == 0:
+                print(f"Extracted {batch_start + idx} TSS candidate features")
+                sys.stdout.flush()
+        
+        # Save batch to CSV
+        batch_df = pd.DataFrame(batch_features)
+        if first_batch:
+            batch_df.to_csv(cfg.tss_feature_file, index=False, mode='w')
+            first_batch = False
+        else:
+            batch_df.to_csv(cfg.tss_feature_file, index=False, mode='a', header=False)
+        
+        # Clear memory
+        del batch_features
+        del batch_df
+        gc.collect()  # Force garbage collection
 
     print("Extracting TES candidate features...")
-    tes_feature_list = [extract_features(bam, *site, cfg) for site in tqdm(tes_candidate_sites, desc="TES Feature Extraction")]
-    features_df = pd.DataFrame(tes_feature_list)
-    features_df.to_csv(cfg.tes_feature_file, index=False)
+    # Set current site type for k-mer embeddings
+    cfg.current_site_type = 'TES'
+    
+    # Process in batches to save memory
+    total_sites = len(tes_candidate_sites)
+    
+    # Initialize CSV file with headers
+    first_batch = True
+    
+    for batch_start in range(0, total_sites, batch_size):
+        batch_end = min(batch_start + batch_size, total_sites)
+        batch_sites = tes_candidate_sites[batch_start:batch_end]
+        
+        print(f"Processing TES batch {batch_start//batch_size + 1}/{(total_sites-1)//batch_size + 1} ({batch_start}-{batch_end-1})")
+        
+        # Extract features for this batch
+        batch_features = []
+        for idx, site in enumerate(batch_sites):
+            batch_features.append(extract_features(bam, *site, cfg))
+            if (batch_start + idx) % 500 == 0:
+                print(f"Extracted {batch_start + idx} TES candidate features")
+                sys.stdout.flush()
+        
+        # Save batch to CSV
+        batch_df = pd.DataFrame(batch_features)
+        if first_batch:
+            batch_df.to_csv(cfg.tes_feature_file, index=False, mode='w')
+            first_batch = False
+        else:
+            batch_df.to_csv(cfg.tes_feature_file, index=False, mode='a', header=False)
+        
+        # Clear memory
+        del batch_features
+        del batch_df
+        gc.collect()  # Force garbage collection
+    
+    # Clean up embedder to free GPU memory
+    if hasattr(cfg, 'use_embeddings') and cfg.use_embeddings:
+        embedding_type = getattr(cfg, 'embedding_type', 'cnn')
+        if embedding_type == 'kmer':
+            print("Cleaning up k-mer embedders...")
+            cleanup_kmer_embedders()
+        # elif embedding_type == 'cnn':
+        #     print("Cleaning up CNN embedders...")
+        #     from sequence_cnn_embeddings import cleanup_cnn_embedder
+        #     cleanup_cnn_embedder()
+        # else:
+        #     print("Cleaning up DNABERT embedder...")
+        #     cleanup_embedder()
+        # 
     save_config(config_path)
     
     print("Feature extraction complete! Output saved as 'candidate_site_features.csv'.")

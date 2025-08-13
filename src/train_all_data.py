@@ -5,13 +5,13 @@ import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 
-RNASEQ_DIR = "../../tools/rnaseqtools"
+RNASEQ_DIR = "../rnaseqtools"
 OUTPUT_DIR = "train_output"
 GENCODE_REF = "data/GRCh38_gencode.gtf"
 ENSEMBLE_REF = "data/GRCh38_ensembl.gtf"
 PROJECT_CONFIG_DIR = "project_config"
 MODEL_CONFIG_DIR = "project_config"
-GFFCOMPARE_ENV = "gffcompare"
+GFFCOMPARE_ENV = "gffcmp_env"
 LOG_DIR = "logs"
 
 def train_data(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file):
@@ -24,10 +24,65 @@ def train_data(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf,
         config_file_path = install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file)
         print(f"Installation of {prefix} completed.")
 
+        # print(f"Extracting soft-clipped sequences for {prefix}...")
+        # p = subprocess.run(
+        #     ["python", "src/extract_soft_clip_sequences.py", "--config", config_file_path],
+        #     capture_output=True, text=True
+        # )
+        # log.write(p.stdout)
+        # log.write(p.stderr)
+        # log.flush()
+        # if p.returncode != 0:
+        #     print(f"❌ Error in soft-clip sequence extraction for {prefix}: {p.stderr}")
+        #     exit(1)
+        # else:
+        #     print(f"✅ Soft-clip sequence extraction for {prefix} completed.")
+
+        # print(f"Labeling candidates for soft-clipped sequences for {prefix}...")
+        # p = subprocess.run(
+        #     ["python", "src/label_candidates.py", "--config", config_file_path],
+        #     capture_output=True, text=True, check=True
+        # )
+        # log.write(p.stdout)
+        # log.write(p.stderr)
+        # log.flush()
+        # if p.returncode != 0:
+        #     print(f"❌ Error in candidate labeling for {prefix}: {p.stderr}")
+        #     exit(1)
+        # else:
+        #     print(f"✅ Candidate labeling for soft-clipped sequences for {prefix} completed.")
+        
+        # Update config to use k-mer embeddings for feature extraction
+        print(f"Configuring {prefix} to use k-mer embeddings...")
+        from config import load_config, save_config
+        temp_cfg = load_config(config_file_path)
+        temp_cfg.use_embeddings = True
+        temp_cfg.embedding_type = 'kmer'
+        temp_cfg.embedding_mode = 'hybrid'  # Use k-mer embeddings + basic features
+        save_config(config_file_path)
+        print(f"✅ Configuration updated for k-mer embeddings.")
+
+        # print(f"Training site-level CNN embeddings for {prefix}...")
+        # p = subprocess.run(
+        #     ["python", "src/train_site_cnn.py", "--config", config_file_path, 
+        #      "--epochs", "50", "--batch-size", "8", "--max-seq-length", "100", 
+        #      "--max-sequences-per-site", "200", "--max-sites-per-type", "5000",
+        #      "--aggregation-type", "mean_max"],
+        #     capture_output=True, text=True
+        # )
+        # log.write(p.stdout)
+        # log.write(p.stderr)
+        # log.flush()
+        # if p.returncode != 0:
+        #     print(f"❌ Error in CNN embedding training for {prefix}: {p.stderr}")
+        #     exit(1)
+        # else:
+        #     print(f"✅ Site-level CNN embedding training for {prefix} completed.")
+
         print(f"Running extract_features.py for {prefix}...")
         p = subprocess.run(
             ["python", "src/extract_features.py", "--config", config_file_path],
-             capture_output=True, text=True, check=False
+             capture_output=True, text=True
         )
         log.write(p.stdout)
         log.write(p.stderr)
@@ -37,20 +92,14 @@ def train_data(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf,
             exit(1)
         else:
             print(f"✅ Feature extraction for {prefix} completed.")
-
-        print(f"Labeling candidates for {prefix}...")
+        
+        print(f"Running label_candidates.py for {prefix}...")
         p = subprocess.run(
             ["python", "src/label_candidates.py", "--config", config_file_path],
-            capture_output=True, text=True
+            capture_output=True, text=True, check=True
         )
         log.write(p.stdout)
         log.write(p.stderr)
-        log.flush()
-        if p.returncode != 0:
-            print(f"❌ Error in candidate labeling for {prefix}: {p.stderr}")
-            exit(1)
-        else:
-            print(f"✅ Candidate labeling for {prefix} completed.")
 
         print(f"Training model for {prefix}...")
         p = subprocess.run(
@@ -94,21 +143,9 @@ def process_dataset_tools(row_data, rnaseq_dir, output_dir):
         (prefix2, rnaseq_dir, output_dir, bam_file, gtf_file2, ref, tmap_file2)
     ]
     
-    # Process both tools for this dataset in parallel
-    with ProcessPoolExecutor(max_workers=2) as executor:
-        future_to_prefix = {
-            executor.submit(train_data, *task): task[0] 
-            for task in tasks
-        }
-        
-        results = []
-        for future in as_completed(future_to_prefix):
-            prefix = future_to_prefix[future]
-            try:
-                future.result()  # This will raise any exceptions that occurred
-                results.append(f"✅ {prefix} completed successfully")
-            except Exception as exc:
-                results.append(f"❌ {prefix} failed with exception: {exc}")
+    results = []
+    for task in tasks:
+        results.append(train_data(*task))
                 
     return results
 
@@ -150,6 +187,7 @@ def init_parallel():
                    row["ref_anno_gtf"])
         dataset_tasks.append(row_data)
     
+    # dataset_tasks = dataset_tasks[:1]
     # Process datasets in parallel (max 2 concurrent datasets to avoid overwhelming system)
     max_concurrent_datasets = min(4, len(dataset_tasks))
     print(f"🚀 Starting parallel processing with {max_concurrent_datasets} concurrent datasets...")

@@ -5,6 +5,11 @@ import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 
+import sys
+# sys.path.append('src')
+from config import load_config, save_config
+import os
+
 # ----------- Directory paths -------------------
 RNASEQ_DIR = "../../tools/rnaseqtools"
 OUTPUT_DIR = "test_output"
@@ -50,19 +55,19 @@ def test_with_pretrained(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref
         config_file_path = install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file)
         print(f"Installation of {prefix} completed.")
 
-        print(f"Running extract_features.py for {prefix}...")
+        print(f"Extracting soft-clipped sequences for soft-clipped sequences for {prefix}...")
         p = subprocess.run(
-            ["python", "src/extract_features.py", "--config", config_file_path],
-             capture_output=True, text=True, check=True
+            ["python", "src/extract_soft_clip_sequences.py", "--config", config_file_path],
+            capture_output=True, text=True
         )
         log.write(p.stdout)
         log.write(p.stderr)
         log.flush()
         if p.returncode != 0:
-            print(f"❌ Error in feature extraction for {prefix}: {p.stderr}")
+            print(f"❌ Error in soft-clip sequence extraction for {prefix}: {p.stderr}")
             exit(1)
         else:
-            print(f"✅ Feature extraction for {prefix} completed.")
+            print(f"✅ Soft-clip sequence extraction for {prefix} completed.")
 
         print(f"Labeling candidates for {prefix}...")
         p = subprocess.run(
@@ -77,6 +82,50 @@ def test_with_pretrained(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref
             exit(1)
         else:
             print(f"✅ Candidate labeling for {prefix} completed.")
+
+        print(f"Setting up CNN model paths for {prefix}...")
+        # Set up CNN model paths from the pretrained model folder
+        
+
+        # config_path = config_file_path
+        # pretrained_folder = pretrained_model_folder
+
+        cfg = load_config(config_file_path)
+
+        # Set site CNN model paths from pretrained folder
+        start_model_path = os.path.join(pretrained_model_folder, 'site_cnn_start_clips_model.pth')
+        end_model_path = os.path.join(pretrained_model_folder, 'site_cnn_end_clips_model.pth')
+
+        if os.path.exists(start_model_path):
+            cfg.set_cnn_start_model_path(start_model_path)
+            print(f'Set start clip model path: {start_model_path}')
+        else:
+            print(f'Warning: Start clip model not found at {start_model_path}')
+
+        if os.path.exists(end_model_path):
+            cfg.set_cnn_end_model_path(end_model_path)
+            print(f'Set end clip model path: {end_model_path}')
+        else:
+            print(f'Warning: End clip model not found at {end_model_path}')
+
+        save_config(config_file_path)
+        print('Site CNN model paths configured successfully')
+
+
+        print(f"Running extract_features.py for {prefix}...")
+        p = subprocess.run(
+            ["python", "src/extract_features.py", "--config", config_file_path],
+             capture_output=True, text=True, check=True
+        )
+        log.write(p.stdout)
+        log.write(p.stderr)
+        log.flush()
+        if p.returncode != 0:
+            print(f"❌ Error in feature extraction for {prefix}: {p.stderr}")
+            exit(1)
+        else:
+            print(f"✅ Feature extraction for {prefix} completed.")
+            
 
         print(f"Testing model for {prefix}...")
         # Generate paths for pretrained models
