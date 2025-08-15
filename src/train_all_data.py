@@ -5,13 +5,13 @@ import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 
-RNASEQ_DIR = "../rnaseqtools"
+RNASEQ_DIR = "../../tools/rnaseqtools"
 OUTPUT_DIR = "train_output"
 GENCODE_REF = "data/GRCh38_gencode.gtf"
 ENSEMBLE_REF = "data/GRCh38_ensembl.gtf"
 PROJECT_CONFIG_DIR = "project_config"
 MODEL_CONFIG_DIR = "project_config"
-GFFCOMPARE_ENV = "gffcmp_env"
+GFFCOMPARE_ENV = "gffcompare"
 LOG_DIR = "logs"
 
 def train_data(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file):

@@ -143,25 +143,11 @@ def extract_features(bam, chrom, pos, strand, cfg):
             # sequence_features = extract_sequence_embeddings(start_clip_sequences, end_clip_sequences, cfg)
         features.update(sequence_features)
     else:
-        # Use original handcrafted features
-        kmer_features = softclip_kmer_features(all_clips)
-        motif_features = softclip_motif_features(all_clips)
-        start_comp_features = softclip_composition_features(start_clip_sequences, "start_")
-        end_comp_features = softclip_composition_features(end_clip_sequences, "end_")
-        start_homo_features = softclip_homopolymer_features(start_clip_sequences, "start_")
-        end_homo_features = softclip_homopolymer_features(end_clip_sequences, "end_")
-        
-        # Add pattern-based features in consistent order
-        # 1. K-mer features (fixed kmers + stats + composition)
-        features.update(kmer_features)
-        # 2. Motif features
-        features.update(motif_features)
-        # 3. Composition features (start, then end)
-        features.update(start_comp_features)
-        features.update(end_comp_features)
-        # 4. Homopolymer features (start, then end)
-        features.update(start_homo_features)
-        features.update(end_homo_features)
+        # Use comprehensive handcrafted features with separate start/end analysis
+        start_kmer_features = softclip_kmer_features(start_clip_sequences, 'start_')
+        end_kmer_features = softclip_kmer_features(end_clip_sequences, 'end_')
+        features.update(start_kmer_features)
+        features.update(end_kmer_features)
     
     # Ensure absolute order consistency by sorting feature names
     # Keep basic features first, then sort pattern-based features
@@ -258,47 +244,86 @@ def calculate_entropy(positions):
     entropy = -sum((freq/total) * math.log2(freq/total) for freq in count.values())
     return entropy
 
-def softclip_fixed_kmer_features(clipped_sequences, k=3):
-    """Use a fixed set of biologically relevant k-mers."""
-    # Define fixed vocabulary of important k-mers for TSS/TES (sorted for consistency)
-    fixed_kmers = sorted([
-        'ATG', 'TAA', 'TGA', 'TAG',  # Start/stop codons
-        'GCC', 'CGC', 'GCG',        # GC-rich
-        'AAA', 'TTT', 'AAT',        # AT-rich  
-        'GTG', 'CAG', 'GAG',        # Common codons
-        'CCC', 'GGG', 'CCG'         # Other patterns
-    ])
-    
-    if not clipped_sequences:
-        # Return in sorted order for consistency
-        return {f'kmer_{kmer}': 0 for kmer in fixed_kmers}
-    
-    kmer_counts = Counter()
-    for seq in clipped_sequences:
-        seq = seq.upper()
-        for i in range(len(seq) - k + 1):
-            kmer = seq[i:i+k]
-            if kmer in fixed_kmers:
-                kmer_counts[kmer] += 1
-    
-    # Return in sorted order for consistency
-    return {f'kmer_{kmer}': kmer_counts.get(kmer, 0) for kmer in fixed_kmers}
 
-def softclip_kmer_stats(clipped_sequences, k=3):
-    """Extract statistical features from k-mer distribution."""
-    # Define feature names in consistent order
-    feature_names = [
-        'gc_kmers_ratio',
-        'kmer_diversity', 
-        'kmer_entropy',
-        'most_frequent_kmer_ratio',
-        'unique_kmers'
-    ]
-    
+
+def softclip_kmer_features(clipped_sequences, prefix="", klist=[3,4,5,6,7]):
+    """Optimized comprehensive soft-clip feature extraction."""
     if not clipped_sequences:
-        return {name: 0 for name in feature_names}
+        return {}
     
+    combined = {}
+    
+    # Single pass through sequences to extract all features efficiently
+    all_bases = ''.join(clipped_sequences).upper()
+    total_bases = len(all_bases)
+    
+    # 1. Nucleotide composition (single pass)
+    if total_bases > 0:
+        a_count = all_bases.count('A')
+        t_count = all_bases.count('T') 
+        g_count = all_bases.count('G')
+        c_count = all_bases.count('C')
+        
+        combined[f'{prefix}gc_content'] = (g_count + c_count) / total_bases
+        combined[f'{prefix}purine_ratio'] = (a_count + g_count) / total_bases
+    else:
+        combined[f'{prefix}gc_content'] = 0
+        combined[f'{prefix}purine_ratio'] = 0
+    
+    # 2. Homopolymer features (single pass per base type)
+    bases = ['A', 'C', 'G', 'T']
+    for base in bases:
+        max_run = 0
+        for seq in clipped_sequences:
+            seq = seq.upper()
+            matches = re.findall(f'{base}+', seq)
+            if matches:
+                seq_max = max(len(match) for match in matches)
+                max_run = max(max_run, seq_max)
+        combined[f'{prefix}max_poly{base}'] = max_run
+    
+    # 3. Motif features (only if no prefix to avoid duplication)
+    # if not prefix:
+    combined.update(_extract_motif_features_optimized(clipped_sequences, prefix))
+    
+    # 4. K-mer features (optimized single pass per k)
+    for k in klist:
+        k_features = _extract_kmer_features_optimized(clipped_sequences, prefix, k)
+        combined.update(k_features)
+    
+    return combined
+
+def _extract_motif_features_optimized(clipped_sequences, prefix):
+    """Optimized motif detection in single pass."""
+    motif_counts = {'cg_rich': 0, 'polyA_signals': 0, 'splice_signals': 0, 'tata_like': 0}
+    
+    for seq in clipped_sequences:
+        seq_upper = seq.upper()
+        if 'AAAA' in seq_upper:
+            motif_counts['polyA_signals'] += 1
+        if 'TATA' in seq_upper:
+            motif_counts['tata_like'] += 1
+        if 'GT' in seq_upper or 'AG' in seq_upper:
+            motif_counts['splice_signals'] += 1
+        if seq_upper.count('CG') >= 2:
+            motif_counts['cg_rich'] += 1
+    return {f'{prefix}{name}': count for name, count in motif_counts.items()}
+
+def _extract_kmer_features_optimized(clipped_sequences, prefix, k):
+    """Optimized k-mer feature extraction in single pass."""
+    # Fixed k-mers for biological relevance (only 3-mers for efficiency)
+    if k == 3:
+        fixed_kmers = sorted(['ATG', 'TAA', 'TGA', 'TAG', 'GCC', 'CGC', 'GCG', 
+                             'AAA', 'TTT', 'AAT', 'GTG', 'CAG', 'GAG', 
+                             'CCC', 'GGG', 'CCG'])
+    else:
+        fixed_kmers = []  # Only use 3-mers for fixed vocabulary to reduce redundancy
+    
+    # Single pass through sequences to collect all k-mer data
     kmer_counts = Counter()
+    fixed_kmer_counts = Counter()
+    composition_counts = {'at_rich_kmers': 0, 'balanced_kmers': 0, 'gc_rich_kmers': 0, 
+                         'purine_rich_kmers': 0, 'repeat_kmers': 0}
     total_kmers = 0
     gc_kmers = 0
     
@@ -306,59 +331,22 @@ def softclip_kmer_stats(clipped_sequences, k=3):
         seq = seq.upper()
         for i in range(len(seq) - k + 1):
             kmer = seq[i:i+k]
-            if all(base in 'ATGC' for base in kmer):  # Valid nucleotides only
+            if all(base in 'ATGC' for base in kmer):
                 kmer_counts[kmer] += 1
                 total_kmers += 1
-                if (kmer.count('G') + kmer.count('C')) >= k/2:
-                    gc_kmers += 1
-    
-    if total_kmers == 0:
-        return {name: 0 for name in feature_names}
-    
-    # Calculate statistics
-    unique_kmers = len(kmer_counts)
-    diversity = unique_kmers / total_kmers if total_kmers > 0 else 0
-    most_frequent_count = max(kmer_counts.values()) if kmer_counts else 0
-    most_frequent_ratio = most_frequent_count / total_kmers if total_kmers > 0 else 0
-    
-    # Shannon entropy
-    probs = [count / total_kmers for count in kmer_counts.values()]
-    kmer_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
-    
-    # Return in consistent order
-    return {
-        'gc_kmers_ratio': gc_kmers / total_kmers if total_kmers > 0 else 0,
-        'kmer_diversity': diversity,
-        'kmer_entropy': kmer_entropy,
-        'most_frequent_kmer_ratio': most_frequent_ratio, 
-        'unique_kmers': unique_kmers
-    }
-
-def softclip_kmer_composition(clipped_sequences, k=3):
-    """Count k-mers by composition type."""
-    # Define feature names in consistent order
-    feature_names = [
-        'at_rich_kmers',       # >60% AT  
-        'balanced_kmers',      # 40-60% GC
-        'gc_rich_kmers',       # >60% GC
-        'purine_rich_kmers',   # >60% A+G
-        'repeat_kmers'         # All same nucleotide
-    ]
-    
-    if not clipped_sequences:
-        return {name: 0 for name in feature_names}
-    
-    composition_counts = {name: 0 for name in feature_names}
-    
-    for seq in clipped_sequences:
-        seq = seq.upper()
-        for i in range(len(seq) - k + 1):
-            kmer = seq[i:i+k]
-            if all(base in 'ATGC' for base in kmer):  # Valid nucleotides only
-                gc_content = (kmer.count('G') + kmer.count('C')) / k
-                purine_content = (kmer.count('A') + kmer.count('G')) / k
                 
-                if len(set(kmer)) == 1:  # All same nucleotide
+                # Fixed k-mer counting
+                if kmer in fixed_kmers:
+                    fixed_kmer_counts[kmer] += 1
+                
+                # GC content analysis
+                gc_content = (kmer.count('G') + kmer.count('C')) / k
+                if gc_content >= 0.5:
+                    gc_kmers += 1
+                
+                # Composition analysis
+                purine_content = (kmer.count('A') + kmer.count('G')) / k
+                if len(set(kmer)) == 1:
                     composition_counts['repeat_kmers'] += 1
                 elif gc_content > 0.6:
                     composition_counts['gc_rich_kmers'] += 1
@@ -366,101 +354,56 @@ def softclip_kmer_composition(clipped_sequences, k=3):
                     composition_counts['at_rich_kmers'] += 1
                 else:
                     composition_counts['balanced_kmers'] += 1
-                    
+                
                 if purine_content > 0.6:
                     composition_counts['purine_rich_kmers'] += 1
     
-    # Return in consistent order
-    return {name: composition_counts[name] for name in feature_names}
+    # Compile features
+    features = {}
+    
+    # Fixed k-mer features (only for 3-mers)
+    if k == 3:
+        for kmer in fixed_kmers:
+            features[f'{prefix}kmer_{kmer}'] = fixed_kmer_counts.get(kmer, 0)
+    
+    # Statistical features
+    if total_kmers > 0:
+        unique_kmers = len(kmer_counts)
+        diversity = unique_kmers / total_kmers
+        most_frequent_count = max(kmer_counts.values()) if kmer_counts else 0
+        most_frequent_ratio = most_frequent_count / total_kmers
+        
+        # Shannon entropy
+        probs = [count / total_kmers for count in kmer_counts.values()]
+        kmer_entropy = -sum(p * math.log2(p) for p in probs if p > 0)
+        
+        features.update({
+            f'{prefix}k{k}_gc_kmers_ratio': gc_kmers / total_kmers,
+            f'{prefix}k{k}_kmer_diversity': diversity,
+            f'{prefix}k{k}_kmer_entropy': kmer_entropy,
+            f'{prefix}k{k}_most_frequent_kmer_ratio': most_frequent_ratio,
+            f'{prefix}k{k}_unique_kmers': unique_kmers
+        })
+        
+        # Composition features
+        for comp_type, count in composition_counts.items():
+            features[f'{prefix}k{k}_{comp_type}'] = count
+    else:
+        # Zero features when no k-mers found
+        zero_features = [f'{prefix}k{k}_gc_kmers_ratio', f'{prefix}k{k}_kmer_diversity', 
+                        f'{prefix}k{k}_kmer_entropy', f'{prefix}k{k}_most_frequent_kmer_ratio',
+                        f'{prefix}k{k}_unique_kmers']
+        for comp_type in composition_counts.keys():
+            zero_features.append(f'{prefix}k{k}_{comp_type}')
+        features.update({feat: 0 for feat in zero_features})
+    
+    return features
 
-def softclip_kmer_features(clipped_sequences, k=3):
-    """Hybrid approach: combine fixed k-mers with statistical features."""
-    fixed_features = softclip_fixed_kmer_features(clipped_sequences, k)
-    stats_features = softclip_kmer_stats(clipped_sequences, k) 
-    composition_features = softclip_kmer_composition(clipped_sequences, k)
-    
-    # Combine all features in consistent order
-    combined = {}
-    # 1. First add fixed k-mers (already sorted)
-    combined.update(fixed_features)
-    # 2. Then add statistical features (already ordered)
-    combined.update(stats_features)
-    # 3. Finally add composition features (already ordered)
-    combined.update(composition_features)
-    
-    return combined
 
-def softclip_composition_features(clipped_sequences, prefix=""):
-    """Calculate nucleotide composition features."""
-    # Define feature names in consistent order
-    feature_names = [
-        f'{prefix}at_content',
-        f'{prefix}gc_content', 
-        f'{prefix}purine_ratio'
-    ]
-    
-    if not clipped_sequences:
-        return {name: 0 for name in feature_names}
-    
-    all_bases = ''.join(clipped_sequences)
-    total = len(all_bases)
-    if total == 0:
-        return {name: 0 for name in feature_names}
-    
-    # Return in consistent order
-    return {
-        f'{prefix}at_content': (all_bases.count('A') + all_bases.count('T')) / total,
-        f'{prefix}gc_content': (all_bases.count('G') + all_bases.count('C')) / total,
-        f'{prefix}purine_ratio': (all_bases.count('A') + all_bases.count('G')) / total
-    }
 
-def softclip_motif_features(clipped_sequences):
-    """Detect biologically relevant motifs in soft-clipped sequences."""
-    # Define feature names in consistent order
-    feature_names = [
-        'cg_rich',
-        'polyA_signals',
-        'splice_signals',
-        'tata_like'
-    ]
-    
-    if not clipped_sequences:
-        return {name: 0 for name in feature_names}
-    
-    # Count relevant motifs
-    polyA_count = len([seq for seq in clipped_sequences if 'AAAA' in seq.upper()])
-    tata_count = len([seq for seq in clipped_sequences if 'TATA' in seq.upper()])
-    splice_count = len([seq for seq in clipped_sequences if 'GT' in seq.upper() or 'AG' in seq.upper()])
-    cg_rich_count = len([seq for seq in clipped_sequences if seq.upper().count('CG') >= 2])
-    
-    # Return in consistent order
-    return {
-        'cg_rich': cg_rich_count,
-        'polyA_signals': polyA_count,
-        'splice_signals': splice_count,
-        'tata_like': tata_count
-    }
 
-def softclip_homopolymer_features(clipped_sequences, prefix=""):
-    """Detect homopolymer runs in soft-clipped sequences."""
-    # Define feature names in consistent order
-    bases = ['A', 'C', 'G', 'T']  # Alphabetical order
-    
-    if not clipped_sequences:
-        return {f'{prefix}max_poly{base}': 0 for base in bases}
-    
-    runs = {base: 0 for base in bases}
-    
-    for seq in clipped_sequences:
-        seq = seq.upper()
-        for base in bases:
-            matches = re.findall(f'{base}+', seq)
-            if matches:
-                max_run = max(len(match) for match in matches)
-                runs[base] = max(runs[base], max_run)
-    
-    # Return in consistent order
-    return {f'{prefix}max_poly{base}': runs[base] for base in bases}
+
+
 
 
 def extract_kmer_embeddings(start_clip_sequences, end_clip_sequences, cfg, site_type):
@@ -621,8 +564,10 @@ def extract_kmer_embeddings(start_clip_sequences, end_clip_sequences, cfg, site_
 def extract_hybrid_features(start_clip_sequences, end_clip_sequences, cfg):
     """Extract both embeddings and key handcrafted features."""
     # Get embeddings (could be CNN or k-mer based on cfg.embedding_type)
-    embedding_features = extract_kmer_embeddings(start_clip_sequences, end_clip_sequences, cfg, cfg.current_site_type)
-    
+    # embedding_features = extract_kmer_embeddings(start_clip_sequences, end_clip_sequences, cfg, cfg.current_site_type)
+    start_kmer_features = softclip_kmer_features(start_clip_sequences, 'start_')
+    end_kmer_features = softclip_kmer_features(end_clip_sequences, 'end_')
+    embedding_features = {**start_kmer_features, **end_kmer_features}
     # Keep only the most important handcrafted features
     all_clips = start_clip_sequences + end_clip_sequences
     

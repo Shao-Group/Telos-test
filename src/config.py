@@ -17,7 +17,7 @@ class Config:
         # embedding configuration   
         self.use_embeddings = True  # Set to True to use embeddings
         self.embedding_mode = 'hybrid'  # 'pure' for embeddings only, 'hybrid' for embeddings + basic features
-        self.embedding_type = 'cnn'  # 'cnn' for CNN embeddings, 'dnabert' for DNABERT embeddings
+        self.embedding_type = 'kmer'  # 'cnn' for CNN embeddings, 'dnabert' for DNABERT embeddings
         # self.embedding_model = 'zhihan1996/DNABERT-2-117M'  # HuggingFace model name (for DNABERT)
         self.embedding_max_length = 200  # Maximum sequence length for embeddings
         self.embedding_dim = 128  # Embedding dimension for CNN
