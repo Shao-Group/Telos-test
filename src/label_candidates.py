@@ -6,6 +6,10 @@ from tqdm import tqdm
 from ml_utils import normalize_chrom
 from config import load_config
 import sys
+from sklearn.feature_selection import SelectKBest, mutual_info_classif
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import RFECV
+import glob
 
 def load_candidates(candidate_path):
     """Load extracted candidate features."""
@@ -57,6 +61,11 @@ def label_candidates(candidate_df, reference_df, site_type, max_distance=50):
         labels[i] = 1 if match_found else 0
 
     candidate_df['label'] = labels
+
+    print(f"Labeled {sum(labels)} {site_type.upper()} candidates")
+    print(f"Positive {site_type.upper()} candidates: {sum(labels == 1)}")
+    print(f"Negative {site_type.upper()} candidates: {sum(labels == 0)}")
+
     return candidate_df
 
 
@@ -110,6 +119,282 @@ def label_softclip_sequences(softclip_df, reference_df, site_type, max_distance=
     # softclip_df['label'] = labels
     return softclip_df
 
+def perform_feature_selection(df, cfg, site_type):
+    """
+    Perform comprehensive feature selection for a given site type.
+    
+    Args:
+        df: DataFrame with features and labels
+        cfg: Configuration object
+        site_type: 'TSS' or 'TES'
+    
+    Returns:
+        selected_features: List of selected feature names
+        feature_importance: Dictionary mapping features to importance scores
+    """
+    print(f"Performing feature selection for {site_type}...")
+    
+    # Separate features and labels
+    exclude_cols = ['chrom', 'position', 'strand', 'label']
+    feature_cols = [col for col in df.columns if col not in exclude_cols]
+    
+    df["chrom"] = df["chrom"].astype(str)
+    df = df.copy()
+    df["chrom"] = df["chrom"].apply(lambda x: x if x.startswith('chr') else f'chr{x}')
+    df = df[df["chrom"].isin(["chr1"])]
+
+    X = df[feature_cols]
+    y = df['label']
+    
+    print(f"Total features before selection: {len(feature_cols)}")
+    kept_features = feature_cols
+    X_filtered = X
+
+    # Step 1: Remove features with low variance
+    # X_filtered, kept_features = _remove_low_variance_features(X, threshold=0.01)
+    # print(f"Features after variance filtering: {len(kept_features)}")
+    
+    # # Step 2: Remove highly correlated features
+    # X_filtered, kept_features = _remove_correlated_features(X_filtered, threshold=0.95)
+    # print(f"Features after correlation filtering: {len(kept_features)}")
+    
+    # # Step 3: Univariate feature selection
+    # X_filtered, kept_features, univariate_scores = _univariate_feature_selection(
+    #     X_filtered, y, k_features=min(500, len(kept_features))
+    # )
+    # print(f"Features after univariate selection: {len(kept_features)}")
+    
+    # Step 4: Recursive feature elimination with Random Forest
+    if len(kept_features) > 50000:  # Only do RFE if we have enough features
+        X_filtered, kept_features, rf_importance = _recursive_feature_elimination(
+            X_filtered, y, max_features=min(200, len(kept_features))
+        )
+        print(f"Features after recursive elimination: {len(kept_features)}")
+    else:
+        # Use Random Forest to get feature importance for remaining features
+        rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+        rf.fit(X_filtered, y)
+        rf_importance = dict(zip(kept_features, rf.feature_importances_))
+    
+    # Step 5: Final selection based on biological relevance and importance
+    final_features = _final_biological_selection(kept_features, rf_importance, site_type)
+    print(f"Final selected features: {len(final_features)}")
+    
+    # Save selected features to config directory
+    _save_selected_features(cfg, final_features, rf_importance, site_type)
+    
+    return final_features, rf_importance
+
+
+def _remove_low_variance_features(X, threshold=0.01):
+    """Remove features with variance below threshold."""
+    variances = X.var()
+    kept_features = variances[variances >= threshold].index.tolist()
+    return X[kept_features], kept_features
+
+
+def _remove_correlated_features(X, threshold=0.95):
+    """Remove highly correlated features."""
+    corr_matrix = X.corr().abs()
+    upper_triangle = corr_matrix.where(
+        np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
+    )
+    
+    # Find features with correlation greater than threshold
+    to_drop = [column for column in upper_triangle.columns if any(upper_triangle[column] > threshold)]
+    
+    kept_features = [col for col in X.columns if col not in to_drop]
+    return X[kept_features], kept_features
+
+
+def _univariate_feature_selection(X, y, k_features=500):
+    """Select best features using univariate statistical tests."""
+    # Use mutual information for feature selection
+    selector = SelectKBest(score_func=mutual_info_classif, k=min(k_features, X.shape[1]))
+    X_selected = selector.fit_transform(X, y)
+    
+    # Get selected feature names and scores
+    selected_mask = selector.get_support()
+    kept_features = X.columns[selected_mask].tolist()
+    feature_scores = dict(zip(kept_features, selector.scores_[selected_mask]))
+    
+    return pd.DataFrame(X_selected, columns=kept_features, index=X.index), kept_features, feature_scores
+
+
+def _recursive_feature_elimination(X, y, max_features=200):
+    """Perform recursive feature elimination with Random Forest."""
+    rf = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1)
+    
+    # Use RFECV to find optimal number of features
+    rfecv = RFECV(
+        estimator=rf,
+        step=1,
+        cv=3,
+        scoring='average_precision',  # Use AUPR for imbalanced data
+        n_jobs=-1,
+        min_features_to_select=min(50, max_features)
+    )
+    
+    rfecv.fit(X, y)
+    
+    # Get selected features
+    selected_mask = rfecv.support_
+    kept_features = X.columns[selected_mask].tolist()
+    
+    # Get feature importance from the final estimator
+    feature_importance = dict(zip(kept_features, rfecv.estimator_.feature_importances_))
+    
+    return X.loc[:, selected_mask], kept_features, feature_importance
+
+
+def _final_biological_selection(features, importance_scores, site_type):
+    """Apply biological knowledge to make final feature selection."""
+    
+    # Define features to drop
+    features_to_drop = set()
+    
+    # 1. Drop redundant features
+    redundant_features = [
+        'gc_content_basic',  # keep gc_content
+        'at_content_basic',  # can be calculated as 1 - gc_content
+        # 'start_soft_clip_count', 'end_soft_clip_count',  # keep means
+        # 'avg_clip_length',  # keep max_clip_length
+        'total_reads',  # redundant with coverage features
+        'total_clip_length'  # redundant with other clip features
+    ]
+    features_to_drop.update(redundant_features)
+    
+    # 2. Drop all 5prime, 3prime k-mer positional features
+    positional_kmer_patterns = [
+        '5prime', '3prime', 'middle_ratio'
+    ]
+    for feature in features:
+        if any(pattern in feature for pattern in positional_kmer_patterns):
+            features_to_drop.add(feature)
+    
+    # 3. Drop biological motif features
+    biological_motif_patterns = [
+        'cleavage_sites', 'downstream_elements', 'u_rich_regions',
+        'pyrimidine_rich', 'polya_signals', 'degenerate_',
+        '_total', '_terminus', '_terminal_ratio'
+    ]
+    for feature in features:
+        if any(pattern in feature for pattern in biological_motif_patterns):
+            features_to_drop.add(feature)
+    
+    # 4. Drop terminal enrichment features
+    terminal_enrichment_patterns = ['_terminal_enrichment']
+    for feature in features:
+        if any(pattern in feature for pattern in terminal_enrichment_patterns):
+            features_to_drop.add(feature)
+    
+    # 5. Keep fixed k-mers (kmer_XXX pattern) - don't drop these
+    # 6. Keep homopolymer features (max_polyX) - don't drop these
+    # 7. Keep soft-clip medians - don't drop these
+    
+    # Filter out features to drop
+    filtered_features = [f for f in features if f not in features_to_drop]
+    
+    # sorted_features = sorted(filtered_features, key=lambda x: importance_scores.get(x, 0), reverse=True)
+    positive_features = [f for f in filtered_features if importance_scores.get(f, 0) > 0]
+    final_features = positive_features
+
+    print(f"Feature filtering for {site_type}:")
+    print(f"  Original features: {len(features)}")
+    print(f"  Features dropped: {len(features_to_drop)}")
+    print(f"  Features kept: {len(filtered_features)}")
+    
+    # Sort by importance scores and return top 10
+    # sorted_features = sorted(filtered_features, key=lambda x: importance_scores.get(x, 0), reverse=True)
+    final_features = filtered_features
+    
+    return final_features
+
+
+def _save_selected_features(cfg, selected_features, importance_scores, site_type):
+    """Save selected features and their importance scores."""
+    # Use config paths for selected feature files
+    if site_type.upper() == 'TSS':
+        features_file = cfg.tss_selected_feature_file
+    else:  # TES
+        features_file = cfg.tes_selected_feature_file
+    
+    # Save selected features list
+    with open(features_file, 'w') as f:
+        for feat in selected_features:
+            f.write(f"{feat}\n")
+    
+    # Save feature importance scores in the same directory
+    features_dir = os.path.dirname(features_file)
+    importance_file = os.path.join(features_dir, f'{cfg.data_name}_{site_type.lower()}_feature_importance.csv')
+    importance_df = pd.DataFrame([
+        {'feature': feat, 'importance': importance_scores.get(feat, 0)}
+        for feat in selected_features
+    ])
+    importance_df = importance_df.sort_values('importance', ascending=False)
+    importance_df.to_csv(importance_file, index=False)
+    
+    print(f"Saved selected features to {features_file}")
+    print(f"Saved feature importance to {importance_file}")
+
+
+def load_selected_features(cfg, site_type):
+    """Load previously selected features."""
+    # Use config paths for selected feature files
+    if site_type.upper() == 'TSS':
+        features_file = cfg.tss_selected_feature_file
+    else:  # TES
+        features_file = cfg.tes_selected_feature_file
+    
+    if os.path.exists(features_file):
+        with open(features_file, 'r') as f:
+            selected_features = [line.strip() for line in f.readlines()]
+        print(f"Loaded {len(selected_features)} selected features for {site_type} from {features_file}")
+        return selected_features
+    else:
+        print(f"No selected features file found for {site_type} at {features_file}")
+        return None
+
+
+def load_selected_features_from_pretrained(pretrained_model_dir, site_type):
+    """
+    Load selected features from a pretrained model directory (for cross-validation).
+    
+    Args:
+        pretrained_model_dir: Path to the pretrained model directory
+        site_type: 'TSS' or 'TES'
+    
+    Returns:
+        List of selected feature names or None if not found
+    """
+    # Look for selected features file in the pretrained model's features directory
+    # Navigate from models dir to features dir: models/../features/
+    features_dir = os.path.join(os.path.dirname(pretrained_model_dir), 'features')
+    
+    # Try to find the selected features file with different naming patterns
+    possible_patterns = [
+        f"*_{site_type.lower()}_selected_features.txt",  # dataset_name_tss_selected_features.txt
+        f"{site_type.lower()}_selected_features.txt"     # tss_selected_features.txt
+    ]
+    
+    features_file = None
+    
+    for pattern in possible_patterns:
+        search_path = os.path.join(features_dir, pattern)
+        matches = glob.glob(search_path)
+        if matches:
+            features_file = matches[0]  # Take the first match
+            break
+    
+    if features_file and os.path.exists(features_file):
+        with open(features_file, 'r') as f:
+            selected_features = [line.strip() for line in f.readlines()]
+        print(f"Loaded {len(selected_features)} selected features for {site_type} from pretrained model: {features_file}")
+        return selected_features
+    else:
+        print(f"No selected features file found for {site_type} in pretrained model directory: {features_dir}")
+        return None
+    
 
 def main(args, cfg):
     # Load configuration
@@ -130,28 +415,82 @@ def main(args, cfg):
         tes_labeled_df.to_csv(cfg.tes_labeled_file, index=False)
         print(f"Labeled TSS candidates saved to: {cfg.tss_labeled_file}")
         print(f"Labeled TES candidates saved to: {cfg.tes_labeled_file}")
+
+        # Perform feature selection on extracted features
+        # Only do feature selection during training (not testing)
+        if getattr(cfg, 'is_training', True):  # Default to True for backward compatibility
+            
+            # Load labeled data and perform feature selection for TSS
+            if os.path.exists(cfg.tss_labeled_file):
+                print("Performing feature selection for TSS...")
+                tss_df = pd.read_csv(cfg.tss_labeled_file)
+                if 'label' in tss_df.columns:
+                    selected_tss_features, tss_importance = perform_feature_selection(tss_df, cfg, 'TSS')
+                    
+                    # Filter and save TSS features with selected features only
+                    tss_filtered = tss_df[['chrom', 'position', 'strand'] + selected_tss_features + ['label']]
+                    # tss_filtered.to_csv(cfg.tss_feature_file.replace('.csv', '_selected.csv'), index=False)
+                    # print(f"Saved filtered TSS features to {cfg.tss_feature_file.replace('.csv', '_selected.csv')}")
+                
+            
+            # Load labeled data and perform feature selection for TES
+            if os.path.exists(cfg.tes_feature_file):
+                print("Performing feature selection for TES...")
+                tes_df = pd.read_csv(cfg.tes_labeled_file)
+                if 'label' in tes_df.columns:
+                    selected_tes_features, tes_importance = perform_feature_selection(tes_df, cfg, 'TES')
+                    
+                    # Filter and save TES features with selected features only
+                    tes_filtered = tes_df[['chrom', 'position', 'strand'] + selected_tes_features + ['label']]
+                    # tes_filtered.to_csv(cfg.tes_labeled_file.replace('.csv', '_selected.csv'), index=False)
+                    # print(f"Saved filtered TES features to {cfg.tes_labeled_file.replace('.csv', '_selected.csv')}")
+        
+        # else:
+        #     # For testing, load previously selected features and filter
+        #     print("Loading previously selected features for testing...")
+            
+        #     # Filter TSS features using previously selected features
+        #     if os.path.exists(cfg.tss_labeled_file):
+        #         selected_tss_features = load_selected_features(cfg, 'TSS')
+        #         # print(f"Selected TSS features: {selected_tss_features}")
+        #         if selected_tss_features:
+        #             tss_df = pd.read_csv(cfg.tss_labeled_file)
+        #             available_features = [f for f in selected_tss_features if f in tss_df.columns]
+        #             tss_filtered = tss_df[['chrom', 'position', 'strand'] + available_features]
+        #             tss_filtered.to_csv(cfg.tss_labeled_file.replace('.csv', '_selected.csv'), index=False)
+        #             print(f"Filtered TSS features using {len(available_features)} selected features")
+            
+        #     # Filter TES features using previously selected features
+        #     if os.path.exists(cfg.tes_labeled_file):
+        #         selected_tes_features = load_selected_features(cfg, 'TES')
+        #         if selected_tes_features:
+        #             tes_df = pd.read_csv(cfg.tes_labeled_file)
+        #             available_features = [f for f in selected_tes_features if f in tes_df.columns]
+        #             tes_filtered = tes_df[['chrom', 'position', 'strand'] + available_features]
+        #             tes_filtered.to_csv(cfg.tes_labeled_file.replace('.csv', '_selected.csv'), index=False)
+        #             print(f"Filtered TES features using {len(available_features)} selected features")
     
     # Label soft-clipped sequences if they exist
-    if hasattr(cfg, 'tss_softclip_file') and hasattr(cfg, 'tes_softclip_file'):
-        if os.path.exists(cfg.tss_softclip_file) and os.path.exists(cfg.tes_softclip_file):
-            # Load soft-clipped sequences
-            tss_softclip_df = pd.read_csv(cfg.tss_softclip_file, dtype={"chrom": str})
-            tes_softclip_df = pd.read_csv(cfg.tes_softclip_file, dtype={"chrom": str})
+    # if hasattr(cfg, 'tss_softclip_file') and hasattr(cfg, 'tes_softclip_file'):
+    #     if os.path.exists(cfg.tss_softclip_file) and os.path.exists(cfg.tes_softclip_file):
+    #         # Load soft-clipped sequences
+    #         tss_softclip_df = pd.read_csv(cfg.tss_softclip_file, dtype={"chrom": str})
+    #         tes_softclip_df = pd.read_csv(cfg.tes_softclip_file, dtype={"chrom": str})
             
-            # Label soft-clipped sequences
-            tss_softclip_labeled_df = label_softclip_sequences(tss_softclip_df, reference_df, "TSS", args.distance)
-            tes_softclip_labeled_df = label_softclip_sequences(tes_softclip_df, reference_df, "TES", args.distance)
+    #         # Label soft-clipped sequences
+    #         tss_softclip_labeled_df = label_softclip_sequences(tss_softclip_df, reference_df, "TSS", args.distance)
+    #         tes_softclip_labeled_df = label_softclip_sequences(tes_softclip_df, reference_df, "TES", args.distance)
             
-            # Save labeled soft-clipped sequences
-            tss_softclip_labeled_df.to_csv(cfg.tss_softclip_labeled_file, index=False)
-            tes_softclip_labeled_df.to_csv(cfg.tes_softclip_labeled_file, index=False)
-            print(f"Labeled TSS soft-clipped sequences saved to: {cfg.tss_softclip_labeled_file}")
-            print(f"Labeled TES soft-clipped sequences saved to: {cfg.tes_softclip_labeled_file}")
+    #         # Save labeled soft-clipped sequences
+    #         tss_softclip_labeled_df.to_csv(cfg.tss_softclip_labeled_file, index=False)
+    #         tes_softclip_labeled_df.to_csv(cfg.tes_softclip_labeled_file, index=False)
+    #         print(f"Labeled TSS soft-clipped sequences saved to: {cfg.tss_softclip_labeled_file}")
+    #         print(f"Labeled TES soft-clipped sequences saved to: {cfg.tes_softclip_labeled_file}")
             
-            # Print summary statistics
-            print(f"\nSoft-clipped sequence labeling summary:")
-            print(f"TSS sequences: {len(tss_softclip_labeled_df)} total, {sum(tss_softclip_labeled_df['label'])} positive")
-            print(f"TES sequences: {len(tes_softclip_labeled_df)} total, {sum(tes_softclip_labeled_df['label'])} positive")
+    #         # Print summary statistics
+    #         print(f"\nSoft-clipped sequence labeling summary:")
+    #         print(f"TSS sequences: {len(tss_softclip_labeled_df)} total, {sum(tss_softclip_labeled_df['label'])} positive")
+    #         print(f"TES sequences: {len(tes_softclip_labeled_df)} total, {sum(tes_softclip_labeled_df['label'])} positive")
 
 
 if __name__ == "__main__":

@@ -8,8 +8,12 @@ import math
 import sys
 import re
 import gc
+import os
 from tqdm import tqdm
 from scipy.stats import entropy
+from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif, RFECV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 import gen_baseline_labels as gen_baseline_labels
 # from sequence_embeddings import get_embedder, cleanup_embedder
 from kmer_embeddings import get_separate_kmer_embedders, cleanup_kmer_embedders
@@ -67,9 +71,9 @@ def extract_features(bam, chrom, pos, strand, cfg):
             read_ends.append(read.reference_end)
             start_soft_clips.append(left_soft_clip_length)
             end_soft_clips.append(right_soft_clip_length)
-            if left_soft_clip_seq and abs(read.reference_start - pos) <= cfg.soft_clip_window:
+            if left_soft_clip_seq != "" and abs(read.reference_start - pos) <= cfg.soft_clip_window:
                 start_clip_sequences.append(left_soft_clip_seq)
-            if right_soft_clip_seq and abs(read.reference_end - pos) <= cfg.soft_clip_window:
+            if right_soft_clip_seq != "" and abs(read.reference_end - pos) <= cfg.soft_clip_window:
                 end_clip_sequences.append(right_soft_clip_seq)
             
         else:
@@ -77,9 +81,9 @@ def extract_features(bam, chrom, pos, strand, cfg):
             read_ends.append(read.reference_start)
             start_soft_clips.append(right_soft_clip_length)
             end_soft_clips.append(left_soft_clip_length)
-            if right_soft_clip_seq and abs(read.reference_end - pos) <= cfg.soft_clip_window:
+            if right_soft_clip_seq != "" and abs(read.reference_end - pos) <= cfg.soft_clip_window:
                 start_clip_sequences.append(right_soft_clip_seq)
-            if left_soft_clip_seq and abs(read.reference_start - pos) <= cfg.soft_clip_window:
+            if left_soft_clip_seq != "" and abs(read.reference_start - pos) <= cfg.soft_clip_window:
                 end_clip_sequences.append(left_soft_clip_seq)
 
         map_quals.append(read.mapping_quality)
@@ -143,11 +147,13 @@ def extract_features(bam, chrom, pos, strand, cfg):
             # sequence_features = extract_sequence_embeddings(start_clip_sequences, end_clip_sequences, cfg)
         features.update(sequence_features)
     else:
-        # Use comprehensive handcrafted features with separate start/end analysis
-        start_kmer_features = softclip_kmer_features(start_clip_sequences, 'start_')
-        end_kmer_features = softclip_kmer_features(end_clip_sequences, 'end_')
-        features.update(start_kmer_features)
-        features.update(end_kmer_features)
+        # Use comprehensive handcrafted features with combined analysis only (better performance)
+        # Determine site type from config
+        current_site_type = getattr(cfg, 'current_site_type', 'TSS')
+        combined_kmer_features = softclip_kmer_features(
+            start_clip_sequences + end_clip_sequences, '', site_type=current_site_type
+        )
+        features.update(combined_kmer_features)
     
     # Ensure absolute order consistency by sorting feature names
     # Keep basic features first, then sort pattern-based features
@@ -246,11 +252,10 @@ def calculate_entropy(positions):
 
 
 
-def softclip_kmer_features(clipped_sequences, prefix="", klist=[3,4,5,6,7]):
-    """Optimized comprehensive soft-clip feature extraction."""
+def softclip_kmer_features(clipped_sequences, prefix="", klist=[3], site_type="TSS"):
+    """Enhanced comprehensive soft-clip feature extraction with positional bias and biological motifs."""
     if not clipped_sequences:
-        return {}
-    
+        clipped_sequences = [""]
     combined = {}
     
     # Single pass through sequences to extract all features efficiently
@@ -282,14 +287,16 @@ def softclip_kmer_features(clipped_sequences, prefix="", klist=[3,4,5,6,7]):
                 max_run = max(max_run, seq_max)
         combined[f'{prefix}max_poly{base}'] = max_run
     
-    # 3. Motif features (only if no prefix to avoid duplication)
-    # if not prefix:
-    combined.update(_extract_motif_features_optimized(clipped_sequences, prefix))
+    # 3. Enhanced motif features with biological relevance
+    combined.update(_extract_enhanced_motif_features(clipped_sequences, prefix, site_type))
     
-    # 4. K-mer features (optimized single pass per k)
+    # 4. Enhanced K-mer features with positional bias
     for k in klist:
-        k_features = _extract_kmer_features_optimized(clipped_sequences, prefix, k)
+        k_features = _extract_enhanced_kmer_features(clipped_sequences, prefix, k)
         combined.update(k_features)
+    
+    # 5. Length-stratified features
+    # combined.update(_extract_length_stratified_features(clipped_sequences, prefix))
     
     return combined
 
@@ -308,6 +315,90 @@ def _extract_motif_features_optimized(clipped_sequences, prefix):
         if seq_upper.count('CG') >= 2:
             motif_counts['cg_rich'] += 1
     return {f'{prefix}{name}': count for name, count in motif_counts.items()}
+
+def _extract_enhanced_motif_features(clipped_sequences, prefix, site_type):
+    """Enhanced biological motif detection with site-specific relevance."""
+    motif_counts = {}
+    
+    # Define site-specific motifs
+    if site_type.upper() == 'TSS':
+        # TSS-relevant motifs
+        splice_motifs = ['GT', 'GC', 'AG', 'AT']  # splice donor/acceptor
+        core_promoter = ['TATA', 'CAAT', 'GC']  # core promoter elements
+        cap_signals = ['CT', 'GA', 'CA']  # cap site signals
+        motif_sets = {
+            'splice_donors': ['GTA', 'GTG', 'GTC', 'GTT'],
+            'splice_acceptors': ['CAG', 'TAG', 'AAG', 'GAG'],
+            'promoter_signals': ['TATA', 'CAAT'],
+            'cap_site_signals': ['CT', 'GA', 'CA'],
+            'purine_rich': ['AAG', 'GAA', 'AGA', 'GAG']
+        }
+    else:  # TES
+        # TES-relevant motifs
+        polya_variants = ['AATAA', 'ATTAA', 'AATACA', 'AATAGA', 'AATAAA']
+        cleavage_signals = ['CA', 'GT', 'GG']  # cleavage and polyadenylation
+        downstream_elements = ['TGT', 'GGT', 'GTG']
+        motif_sets = {
+            'polya_signals': polya_variants,
+            'cleavage_sites': ['CA', 'GT', 'GG'],
+            'downstream_elements': ['TGT', 'GGT', 'GTG'],
+            'u_rich_regions': ['TTT', 'TTA', 'TAT', 'ATT'],
+            'pyrimidine_rich': ['TTC', 'CTT', 'CCT', 'TCC']
+        }
+    
+    # Count motifs with positional awareness
+    for motif_type, motifs in motif_sets.items():
+        total_count = 0
+        terminus_count = 0  # Count in terminal 5bp
+        
+        for seq in clipped_sequences:
+            seq_upper = seq.upper()
+            seq_len = len(seq_upper)
+            
+            for motif in motifs:
+                # Total count
+                motif_count = seq_upper.count(motif)
+                total_count += motif_count
+                
+                # Terminal enrichment (first/last 5bp)
+                if seq_len >= len(motif):
+                    # Check terminals
+                    terminal_5bp_start = seq_upper[:min(5, seq_len)]
+                    terminal_5bp_end = seq_upper[max(0, seq_len-5):]
+                    terminus_count += terminal_5bp_start.count(motif)
+                    terminus_count += terminal_5bp_end.count(motif)
+        
+        motif_counts[f'{prefix}{motif_type}_total'] = total_count
+        motif_counts[f'{prefix}{motif_type}_terminus'] = terminus_count
+        
+        # Calculate terminal enrichment ratio
+        if total_count > 0:
+            motif_counts[f'{prefix}{motif_type}_terminal_ratio'] = terminus_count / total_count
+        else:
+            motif_counts[f'{prefix}{motif_type}_terminal_ratio'] = 0
+    
+    # Degenerate motif matching (1 mismatch allowed for key motifs)
+    key_motifs = ['AATAAA'] if site_type.upper() == 'TES' else ['TATAAA']
+    for motif in key_motifs:
+        degenerate_count = 0
+        for seq in clipped_sequences:
+            degenerate_count += _count_degenerate_motif(seq.upper(), motif, max_mismatches=1)
+        motif_counts[f'{prefix}degenerate_{motif.lower()}'] = degenerate_count
+    
+    return motif_counts
+
+def _count_degenerate_motif(sequence, motif, max_mismatches=1):
+    """Count occurrences of motif allowing up to max_mismatches."""
+    count = 0
+    motif_len = len(motif)
+    
+    for i in range(len(sequence) - motif_len + 1):
+        subseq = sequence[i:i + motif_len]
+        mismatches = sum(1 for a, b in zip(subseq, motif) if a != b)
+        if mismatches <= max_mismatches:
+            count += 1
+    
+    return count
 
 def _extract_kmer_features_optimized(clipped_sequences, prefix, k):
     """Optimized k-mer feature extraction in single pass."""
@@ -396,6 +487,155 @@ def _extract_kmer_features_optimized(clipped_sequences, prefix, k):
         for comp_type in composition_counts.keys():
             zero_features.append(f'{prefix}k{k}_{comp_type}')
         features.update({feat: 0 for feat in zero_features})
+    
+    return features
+
+def _extract_enhanced_kmer_features(clipped_sequences, prefix, k):
+    """Enhanced k-mer feature extraction with positional bias."""
+    # Get standard k-mer features first
+    standard_features = _extract_kmer_features_optimized(clipped_sequences, prefix, k)
+    
+    # Add positional bias features
+    positional_features = {}
+    
+    # Positional k-mer counts
+    fiveprime_kmers = Counter()
+    threeprime_kmers = Counter()
+    middle_kmers = Counter()
+    
+    total_positional_kmers = 0
+    
+    for seq in clipped_sequences:
+        seq = seq.upper()
+        seq_len = len(seq)
+        
+        if seq_len < k:
+            continue
+            
+        for i in range(len(seq) - k + 1):
+            kmer = seq[i:i+k]
+            if all(base in 'ATGC' for base in kmer):
+                total_positional_kmers += 1
+                
+                # Calculate relative position (0 to 1)
+                position_ratio = i / max(1, seq_len - k)
+                
+                # Bin positions
+                if position_ratio <= 0.3:  # 5' region
+                    fiveprime_kmers[kmer] += 1
+                elif position_ratio >= 0.7:  # 3' region
+                    threeprime_kmers[kmer] += 1
+                else:  # Middle region
+                    middle_kmers[kmer] += 1
+    
+    # Calculate positional bias statistics
+    if total_positional_kmers > 0:
+        fiveprime_total = sum(fiveprime_kmers.values())
+        threeprime_total = sum(threeprime_kmers.values())
+        middle_total = sum(middle_kmers.values())
+        
+        positional_features.update({
+            f'{prefix}k{k}_5prime_ratio': fiveprime_total / total_positional_kmers,
+            f'{prefix}k{k}_3prime_ratio': threeprime_total / total_positional_kmers,
+            f'{prefix}k{k}_middle_ratio': middle_total / total_positional_kmers,
+            f'{prefix}k{k}_5prime_diversity': len(fiveprime_kmers) / max(1, fiveprime_total),
+            f'{prefix}k{k}_3prime_diversity': len(threeprime_kmers) / max(1, threeprime_total),
+        })
+        
+        # Most frequent k-mers in each region
+        if fiveprime_kmers:
+            most_freq_5prime = max(fiveprime_kmers.values())
+            positional_features[f'{prefix}k{k}_5prime_max_freq'] = most_freq_5prime / max(1, fiveprime_total)
+        else:
+            positional_features[f'{prefix}k{k}_5prime_max_freq'] = 0
+            
+        if threeprime_kmers:
+            most_freq_3prime = max(threeprime_kmers.values())
+            positional_features[f'{prefix}k{k}_3prime_max_freq'] = most_freq_3prime / max(1, threeprime_total)
+        else:
+            positional_features[f'{prefix}k{k}_3prime_max_freq'] = 0
+            
+        # Terminal enrichment for specific biological k-mers (3-mers only)
+        if k == 3:
+            important_kmers = ['ATG', 'TAA', 'TGA', 'TAG', 'AAA', 'TTT']
+            for kmer in important_kmers:
+                total_kmer = fiveprime_kmers.get(kmer, 0) + threeprime_kmers.get(kmer, 0) + middle_kmers.get(kmer, 0)
+                terminal_kmer = fiveprime_kmers.get(kmer, 0) + threeprime_kmers.get(kmer, 0)
+                
+                if total_kmer > 0:
+                    positional_features[f'{prefix}k{k}_{kmer}_terminal_enrichment'] = terminal_kmer / total_kmer
+                else:
+                    positional_features[f'{prefix}k{k}_{kmer}_terminal_enrichment'] = 0
+    else:
+        # Zero features when no k-mers found
+        zero_positional_features = [
+            f'{prefix}k{k}_5prime_ratio', f'{prefix}k{k}_3prime_ratio', f'{prefix}k{k}_middle_ratio',
+            f'{prefix}k{k}_5prime_diversity', f'{prefix}k{k}_3prime_diversity',
+            f'{prefix}k{k}_5prime_max_freq', f'{prefix}k{k}_3prime_max_freq'
+        ]
+        
+        if k == 3:
+            important_kmers = ['ATG', 'TAA', 'TGA', 'TAG', 'AAA', 'TTT']
+            for kmer in important_kmers:
+                zero_positional_features.append(f'{prefix}k{k}_{kmer}_terminal_enrichment')
+        
+        positional_features.update({feat: 0 for feat in zero_positional_features})
+    
+    # Combine standard and positional features
+    combined_features = {**standard_features, **positional_features}
+    return combined_features
+
+def _extract_length_stratified_features(clipped_sequences, prefix):
+    """Extract features based on clip length stratification."""
+    features = {}
+    
+    # Stratify sequences by length
+    short_clips = [seq for seq in clipped_sequences if len(seq) <= 10]
+    medium_clips = [seq for seq in clipped_sequences if 11 <= len(seq) <= 25]
+    long_clips = [seq for seq in clipped_sequences if len(seq) > 25]
+    
+    # Basic statistics for each stratum
+    strata = {
+        'short': short_clips,
+        'medium': medium_clips,
+        'long': long_clips
+    }
+    
+    for stratum_name, clips in strata.items():
+        if clips:
+            # Length statistics
+            lengths = [len(seq) for seq in clips]
+            features[f'{prefix}{stratum_name}_count'] = len(clips)
+            features[f'{prefix}{stratum_name}_mean_length'] = np.mean(lengths)
+            features[f'{prefix}{stratum_name}_max_length'] = max(lengths)
+            
+            # Composition for each stratum
+            all_bases = ''.join(clips).upper()
+            if all_bases:
+                total_bases = len(all_bases)
+                features[f'{prefix}{stratum_name}_gc_content'] = (all_bases.count('G') + all_bases.count('C')) / total_bases
+                features[f'{prefix}{stratum_name}_purine_ratio'] = (all_bases.count('A') + all_bases.count('G')) / total_bases
+            else:
+                features[f'{prefix}{stratum_name}_gc_content'] = 0
+                features[f'{prefix}{stratum_name}_purine_ratio'] = 0
+        else:
+            # Zero features for empty strata
+            features[f'{prefix}{stratum_name}_count'] = 0
+            features[f'{prefix}{stratum_name}_mean_length'] = 0
+            features[f'{prefix}{stratum_name}_max_length'] = 0
+            features[f'{prefix}{stratum_name}_gc_content'] = 0
+            features[f'{prefix}{stratum_name}_purine_ratio'] = 0
+    
+    # Cross-stratum ratios
+    total_clips = len(clipped_sequences)
+    if total_clips > 0:
+        features[f'{prefix}short_clip_ratio'] = len(short_clips) / total_clips
+        features[f'{prefix}medium_clip_ratio'] = len(medium_clips) / total_clips
+        features[f'{prefix}long_clip_ratio'] = len(long_clips) / total_clips
+    else:
+        features[f'{prefix}short_clip_ratio'] = 0
+        features[f'{prefix}medium_clip_ratio'] = 0
+        features[f'{prefix}long_clip_ratio'] = 0
     
     return features
 
@@ -565,9 +805,13 @@ def extract_hybrid_features(start_clip_sequences, end_clip_sequences, cfg):
     """Extract both embeddings and key handcrafted features."""
     # Get embeddings (could be CNN or k-mer based on cfg.embedding_type)
     # embedding_features = extract_kmer_embeddings(start_clip_sequences, end_clip_sequences, cfg, cfg.current_site_type)
-    start_kmer_features = softclip_kmer_features(start_clip_sequences, 'start_')
-    end_kmer_features = softclip_kmer_features(end_clip_sequences, 'end_')
-    embedding_features = {**start_kmer_features, **end_kmer_features}
+    # Use only combined features for better performance
+    current_site_type = getattr(cfg, 'current_site_type', 'TSS')
+    combined_kmer_features = softclip_kmer_features(
+        start_clip_sequences + end_clip_sequences, '', site_type=current_site_type
+    )
+
+    embedding_features = combined_kmer_features
     # Keep only the most important handcrafted features
     all_clips = start_clip_sequences + end_clip_sequences
     
@@ -625,6 +869,9 @@ def read_start_end_entropy(start_positions, end_positions, pos, cfg):
     return start_entropy, end_entropy
 
 
+
+
+
 def main(cfg, config_path):
     if cfg == None:
         raise ValueError("Configuration has not been created. Please call create_config() first.")
@@ -638,14 +885,14 @@ def main(cfg, config_path):
     bam = pysam.AlignmentFile(cfg.bam_file, "rb")  # <-- adjust path if needed
     tss_candidate_sites, tes_candidate_sites = load_candidate_sites(cfg.candidate_file)
     
-    # Collect features
-    # if os.path.exists(cfg.tss_feature_file) and os.path.exists(cfg.tes_feature_file):
-    #     print(f"Feature files already exist: {cfg.tss_feature_file}, {cfg.tes_feature_file}")
-    #     # Close the BAM file
-    #     bam.close()
-    #     save_config(config_path)
+    # # Collect features
+    if os.path.exists(cfg.tss_feature_file) and os.path.exists(cfg.tes_feature_file):
+        print(f"Feature files already exist: {cfg.tss_feature_file}, {cfg.tes_feature_file}")
+        # Close the BAM file
+        bam.close()
+        save_config(config_path)
 
-    #     return
+        return
 
     print("Extracting TSS candidate features...")
     # Set current site type for k-mer embeddings
@@ -724,21 +971,18 @@ def main(cfg, config_path):
     
     # Clean up embedder to free GPU memory
     if hasattr(cfg, 'use_embeddings') and cfg.use_embeddings:
-        embedding_type = getattr(cfg, 'embedding_type', 'cnn')
+        embedding_type = getattr(cfg, 'embedding_type', 'kmer')
         if embedding_type == 'kmer':
             print("Cleaning up k-mer embedders...")
             cleanup_kmer_embedders()
-        # elif embedding_type == 'cnn':
-        #     print("Cleaning up CNN embedders...")
-        #     from sequence_cnn_embeddings import cleanup_cnn_embedder
-        #     cleanup_cnn_embedder()
-        # else:
-        #     print("Cleaning up DNABERT embedder...")
-        #     cleanup_embedder()
-        # 
+    
+    print("Feature extraction complete!")
+    
+    
+    
     save_config(config_path)
     
-    print("Feature extraction complete! Output saved as 'candidate_site_features.csv'.")
+    print("Feature extraction and selection complete!")
 
 
 if __name__ == "__main__":

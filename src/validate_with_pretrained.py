@@ -13,6 +13,7 @@ from sklearn.metrics import (
     accuracy_score, roc_auc_score, average_precision_score,
     classification_report
 )
+from label_candidates import load_selected_features
 
 def validate_stage2(df_tss, df_tes, project_config, model_type, pretrained_model):
     df_cov = pd.read_csv(project_config.cov_file, sep="\t")
@@ -33,7 +34,7 @@ def validate_stage2(df_tss, df_tes, project_config, model_type, pretrained_model
     drop = [
         'chrom','position','chrom_tes','position_tes',
         'tss_chrom','tss_pos','tes_chrom','tes_pos',
-        'site_type','site_type_tes',
+        'site_type','site_type_tes','strand', 'strand_tes',
         'ref_id','chrom_num','transcript_id','label'
     ]
     features = [c for c in df.columns
@@ -61,8 +62,8 @@ def validate_stage2(df_tss, df_tes, project_config, model_type, pretrained_model
 
 
     acc   = accuracy_score(y_test, y_pred)
-    roc   = roc_auc_score(y_test, y_prob)
-    aupr  = average_precision_score(y_test, y_prob)
+    roc   = roc_auc_score(y_test, y_prob, average='macro')
+    aupr  = average_precision_score(y_test, y_prob, average='macro')
     report_dict = classification_report(y_test, y_pred, digits=4, output_dict=True)
 
     print(f"\nAccuracy: {acc:.4f}")
@@ -89,8 +90,22 @@ def validate_stage1(df, model_type, model_config, project_config, pretrained_mod
     drop = ["chrom", "position", "strand", "label"]
 
     X_train, X_val, y_train, y_val = stratified_split(df, validation_chrom_file=project_config.validation_chromosomes_file)
-    numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-    numeric_cols = [col for col in numeric_cols if col not in drop]
+    
+    # Use selected features if available, otherwise use all numeric features
+    # from label_candidates import load_selected_features
+    selected_features = load_selected_features(project_config, site_type)
+    
+    if selected_features:
+        # Use only selected features that exist in the DataFrame
+        available_selected_features = [col for col in selected_features if col in df.columns]
+        print(f"Using {len(available_selected_features)} selected features for {site_type}")
+        numeric_cols = available_selected_features
+    else:
+        # Fallback to all numeric features
+        raise ValueError(f"No selected features found for {site_type}, using all numeric features")
+        # numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+        # numeric_cols = [col for col in numeric_cols if col not in drop]
+    
     X_train = X_train[numeric_cols]
     X_val = X_val[numeric_cols]
 
@@ -107,6 +122,21 @@ def validate_stage1(df, model_type, model_config, project_config, pretrained_mod
 
     pr_data_path = os.path.join(project_config.pr_data_dir, f"{site_type}_{model_type}_pr_data.csv")
     metrics = evaluate_model(y_val, y_pred, y_prob, pr_data_path )
+
+    # save metrics to file
+    metrics_list = []
+    for metric_name, metric_value in metrics.items():
+        if metric_name != 'confusion_matrix':  # Handle confusion matrix separately
+            metrics_list.append({'metric': metric_name, 'value': metric_value})
+    
+    # Add confusion matrix as a formatted string
+    cm_str = str(metrics['confusion_matrix'])
+    metrics_list.append({'metric': 'confusion_matrix', 'value': cm_str})
+    
+    metrics_df = pd.DataFrame(metrics_list)
+    metrics_file = os.path.join(project_config.metrics_output_dir, f"{site_type}_{model_type}_metrics.csv")
+    metrics_df.to_csv(metrics_file, index=False)
+    print(f"Metrics saved to {metrics_file}")
 
     if model_type == "randomforest":
         importances = model.feature_importances_
@@ -147,13 +177,23 @@ def main():
     project_config = load_config(args.project_config)
     project_config.validation_chromosomes_file = os.path.join(project_config.data_output_dir, "validation_chromosomes.txt")
 
-    df_tss = pd.read_csv(project_config.tss_labeled_file)
+    # Check if selected feature files exist, otherwise use original labeled files
+    
+    print(f"Using original: {project_config.tss_labeled_file}")
+    df_tss = pd.read_csv(project_config.tss_labeled_file, dtype={"chrom": str})
+    print(f"df_tss.columns: {df_tss.columns}")
+        
     with open(os.path.join(args.model_config_folder, f"tss_{args.model_type}_config.yaml")) as f:
         model_config = yaml.safe_load(f)
 
     metrics, model, df_tss_pred = validate_stage1(df_tss, args.model_type, model_config, project_config, args.pretrained_tss_model, "tss")
 
-    df_tes = pd.read_csv(project_config.tes_labeled_file)
+    # Check if selected feature files exist for TES
+
+    print(f"Selected features file not found, using original: {project_config.tes_labeled_file}")
+    df_tes = pd.read_csv(project_config.tes_labeled_file, dtype={"chrom": str})
+    print(f"df_tes.columns: {df_tes.columns}")
+        
     with open(os.path.join(args.model_config_folder, f"tes_{args.model_type}_config.yaml")) as f:
         model_config = yaml.safe_load(f)
 

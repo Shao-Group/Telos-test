@@ -42,6 +42,9 @@ class Config:
         self.ref_candidate_file = None
         self.validation_chromosomes_file = None
 
+        self.tss_selected_feature_file = None
+        self.tes_selected_feature_file = None
+
         self._make_dirs()
 
     def _make_dirs(self):
@@ -74,6 +77,10 @@ class Config:
         self.tes_feature_file   = os.path.join(self.features_output_dir, f"{p}_tes_features.tsv")
         self.tss_labeled_file   = os.path.join(self.features_output_dir, f"{p}_tss_labeled.tsv")
         self.tes_labeled_file   = os.path.join(self.features_output_dir, f"{p}_tes_labeled.tsv")
+        
+        # selected feature files
+        self.tss_selected_feature_file = os.path.join(self.features_output_dir, f"{p}_tss_selected_features.txt")
+        self.tes_selected_feature_file = os.path.join(self.features_output_dir, f"{p}_tes_selected_features.txt")
         
         # soft-clipped sequence files
         self.tss_softclip_file       = os.path.join(self.features_output_dir, f"{p}_tss_softclip_sequences.tsv")

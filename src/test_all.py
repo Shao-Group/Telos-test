@@ -45,7 +45,10 @@ def generate_model_paths(model_folder):
 
     return model_paths
 
-def test_with_pretrained(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file, pretrained_model_folder):
+def test_with_pretrained(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file, pretrained_config_file):
+    pretrained_config = load_config(pretrained_config_file)
+    pretrained_model_folder = pretrained_config.models_output_dir
+    
     output_dir = os.path.join(output_dir, prefix)
     os.makedirs(output_dir, exist_ok=True)
     log_file = os.path.join(LOG_DIR, f"{prefix}.log")
@@ -54,7 +57,11 @@ def test_with_pretrained(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref
         print(f"Installing {prefix}...")
         config_file_path = install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file)
         print(f"Installation of {prefix} completed.")
-
+        temp_cfg = load_config(config_file_path)
+        temp_cfg.tss_selected_feature_file = pretrained_config.tss_selected_feature_file
+        temp_cfg.tes_selected_feature_file = pretrained_config.tes_selected_feature_file
+        temp_cfg.is_training = False
+        save_config(config_file_path)
 
         print(f"Running extract_features.py for {prefix}...")
         p = subprocess.run(
@@ -129,8 +136,9 @@ def test_with_pretrained(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref
 
 def process_dataset_tools_test(row_data, rnaseq_dir, output_dir):
     """Process both tools for a single dataset sequentially"""
-    prefix, bam_file, gtf_file1, gtf_file2, tmap_file1, tmap_file2, ref, pretrained_folder1, pretrained_folder2 = row_data
-    
+    prefix, bam_file, gtf_file1, gtf_file2, tmap_file1, tmap_file2, ref, pretrained_config1, pretrained_config2 = row_data
+    # pretrained_folder1 = pretrained_config1.models_output_dir
+    # pretrained_folder2 = pretrained_config2.models_output_dir
     print(f"Processing {prefix}...")
     prefix1 = prefix + "_stringtie"
     prefix2 = (prefix + "_isoquant") if not prefix.startswith("SRR") else (prefix + "_scallop2")
@@ -139,7 +147,7 @@ def process_dataset_tools_test(row_data, rnaseq_dir, output_dir):
     
     # Process stringtie first
     try:
-        test_with_pretrained(prefix1, rnaseq_dir, output_dir, bam_file, gtf_file1, ref, tmap_file1, pretrained_folder1)
+        test_with_pretrained(prefix1, rnaseq_dir, output_dir, bam_file, gtf_file1, ref, tmap_file1, pretrained_config1)
         results.append(f"✅ {prefix1} completed successfully")
     except Exception as exc:
         results.append(f"❌ {prefix1} failed with exception: {exc}")
@@ -147,7 +155,7 @@ def process_dataset_tools_test(row_data, rnaseq_dir, output_dir):
     
     # Process isoquant/scallop2 second
     try:
-        test_with_pretrained(prefix2, rnaseq_dir, output_dir, bam_file, gtf_file2, ref, tmap_file2, pretrained_folder2)
+        test_with_pretrained(prefix2, rnaseq_dir, output_dir, bam_file, gtf_file2, ref, tmap_file2, pretrained_config2)
         results.append(f"✅ {prefix2} completed successfully")
     except Exception as exc:
         results.append(f"❌ {prefix2} failed with exception: {exc}")
@@ -180,10 +188,14 @@ def test_all_parallel():
                        "data/cv_pacbio_ENCFF694DIE/isoquant.isoquant.gtf.tmap",
                        "data/cv_SRR307911_hisat/scallop2.scallop2.gtf.tmap"],
         "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF],
-        "pretrained_model_folder1" : ["train_output/cDNA-NA12878_stringtie/models", "train_output/dRNA-NA12878_stringtie/models",
-                                      "train_output/pacbio_ENCFF450VAU_stringtie/models", "train_output/SRR307903_stringtie/models"],
-        "pretrained_model_folder2" : ["train_output/cDNA-NA12878_isoquant/models", "train_output/dRNA-NA12878_isoquant/models",
-                                      "train_output/pacbio_ENCFF450VAU_isoquant/models", "train_output/SRR307903_scallop2/models"]
+        # "pretrained_model_folder1" : ["train_output/cDNA-NA12878_stringtie/models", "train_output/dRNA-NA12878_stringtie/models",
+        #                               "train_output/pacbio_ENCFF450VAU_stringtie/models", "train_output/SRR307903_stringtie/models"],
+        # "pretrained_model_folder2" : ["train_output/cDNA-NA12878_isoquant/models", "train_output/dRNA-NA12878_isoquant/models",
+                                    #   "train_output/pacbio_ENCFF450VAU_isoquant/models", "train_output/SRR307903_scallop2/models"]
+        "pretrained_config1" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_stringtie_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-NA12878_stringtie_config.pkl",
+                                f"{PROJECT_CONFIG_DIR}/pacbio_ENCFF450VAU_stringtie_config.pkl", f"{PROJECT_CONFIG_DIR}/SRR307903_stringtie_config.pkl"],
+        "pretrained_config2" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-NA12878_isoquant_config.pkl",
+                                f"{PROJECT_CONFIG_DIR}/pacbio_ENCFF450VAU_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/SRR307903_scallop2_config.pkl"]
     }
     
     test_configs_df = pd.DataFrame(test_configs)
@@ -193,8 +205,8 @@ def test_all_parallel():
     for index, row in test_configs_df.iterrows():
         row_data = (row["prefix"], row["bam_file"], row["gtf_file1"], 
                    row["gtf_file2"], row["tmap_file1"], row["tmap_file2"], 
-                   row["ref_anno_gtf"], row["pretrained_model_folder1"], 
-                   row["pretrained_model_folder2"])
+                   row["ref_anno_gtf"], row["pretrained_config1"], 
+                   row["pretrained_config2"])
         dataset_tasks.append(row_data)
     
     # Process datasets in parallel (max 2 concurrent datasets to avoid overwhelming system)

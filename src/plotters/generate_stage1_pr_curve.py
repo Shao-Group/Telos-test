@@ -70,7 +70,7 @@ def plot_pr(config_folder):
             tools[1] : load_config(os.path.join(config_folder, f"{name}_{tools[1]}_config.pkl"))
         }
         for j, site in enumerate(site_types):
-            # print(f"Plotting {name} {site} {i} {j}")
+            print(f"Plotting {name} {site} {i} {j}")
             ax = axes[i, j]
             
             pr_files  = {

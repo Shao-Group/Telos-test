@@ -52,15 +52,16 @@ def train_data(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf,
         # else:
         #     print(f"✅ Candidate labeling for soft-clipped sequences for {prefix} completed.")
         
-        # Update config to use k-mer embeddings for feature extraction
-        print(f"Configuring {prefix} to use k-mer embeddings...")
+        # Update config to use enhanced features for training
+        print(f"Configuring {prefix} to use enhanced features for training...")
         from config import load_config, save_config
         temp_cfg = load_config(config_file_path)
         temp_cfg.use_embeddings = True
         temp_cfg.embedding_type = 'kmer'
         temp_cfg.embedding_mode = 'hybrid'  # Use k-mer embeddings + basic features
+        temp_cfg.is_training = True  # Enable feature selection during training
         save_config(config_file_path)
-        print(f"✅ Configuration updated for k-mer embeddings.")
+        print(f"✅ Configuration updated for enhanced features and training mode.")
 
         # print(f"Training site-level CNN embeddings for {prefix}...")
         # p = subprocess.run(
@@ -189,7 +190,7 @@ def init_parallel():
     
     # dataset_tasks = dataset_tasks[:1]
     # Process datasets in parallel (max 2 concurrent datasets to avoid overwhelming system)
-    max_concurrent_datasets = min(4, len(dataset_tasks))
+    max_concurrent_datasets = min(2, len(dataset_tasks))
     print(f"🚀 Starting parallel processing with {max_concurrent_datasets} concurrent datasets...")
     
     with ProcessPoolExecutor(max_workers=max_concurrent_datasets) as executor:
