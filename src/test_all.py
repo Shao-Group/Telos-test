@@ -31,14 +31,14 @@ def generate_model_paths(model_folder):
     m1 = {
         "tss": os.path.join(model_folder, f"tss_randomforest_model.joblib"),
         "tes": os.path.join(model_folder, f"tes_randomforest_model.joblib"),
-        "stage2": os.path.join(model_folder, f"xgboost_stage2_model.json"),
+        "stage2": os.path.join(model_folder, f"xgboost_stage2_model.joblib"),
         "model_type": "randomforest"
     }
     model_paths.append(m1)
     m2 = {
         "tss": os.path.join(model_folder, f"tss_xgboost_model.json"),
         "tes": os.path.join(model_folder, f"tes_xgboost_model.json"),
-        "stage2": os.path.join(model_folder, f"xgboost_stage2_model.json"),
+        "stage2": os.path.join(model_folder, f"xgboost_stage2_model.joblib"),
         "model_type": "xgboost"
     }
     model_paths.append(m2)
@@ -166,25 +166,34 @@ def test_all_parallel():
     """Parallel version of test_all() function"""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     test_configs = {
-        "prefix": ["cDNA-K562","dRNA-Hek293T", "pacbio_ENCFF694DIE", "SRR307911"],
+        "prefix": ["cDNA-K562", 
+                #    "dRNA-Hek293T", 
+                    "dRNA-ENCFF771DIX",
+                   "pacbio_ENCFF694DIE", 
+                   "SRR307911"],
         "bam_file": ["data/cv_K562_cDNA/SGNex_K562_cDNA.sorted.bam",
-                     "data/cv_Hek293T_dRNA/SGNex_Hek293T_dRNA.sorted.bam",
+                     "data/cv_ENCFF771DIX_dRNA/dRNA-ENCFF771DIX.sorted.bam",
+                    #  "data/cv_Hct116_dRNA/Hct116_dRNA_wo.sorted.bam",
                      "data/cv_pacbio_ENCFF694DIE/ENCFF694DIE.sorted.bam",
                      "data/cv_SRR307911_hisat/hisat.sorted.bam"],
         "gtf_file1": ["data/cv_K562_cDNA/stringtie.gtf", 
-                      "data/cv_Hek293T_dRNA/stringtie.gtf",
+                      "data/cv_ENCFF771DIX_dRNA/stringtie.gtf",
+                    #   "data/cv_Hct116_dRNA/stringtie.gtf",
                       "data/cv_pacbio_ENCFF694DIE/stringtie.gtf",
                       "data/cv_SRR307911_hisat/stringtie.gtf"],
         "gtf_file2": ["data/cv_K562_cDNA/isoquant.gtf", 
-                      "data/cv_Hek293T_dRNA/isoquant.gtf",
+                      "data/cv_ENCFF771DIX_dRNA/isoquant.gtf",
+                    #   "data/cv_Hct116_dRNA/isoquant.gtf",
                       "data/cv_pacbio_ENCFF694DIE/isoquant.gtf",
                       "data/cv_SRR307911_hisat/scallop2.gtf"],
         "tmap_file1":  ["data/cv_K562_cDNA/stringtie.stringtie.gtf.tmap",
-                        "data/cv_Hek293T_dRNA/stringtie.stringtie.gtf.tmap",
+                        "data/cv_ENCFF771DIX_dRNA/stringtie.stringtie.gtf.tmap",
+                    #     "data/cv_Hct116_dRNA/stringtie.stringtie.gtf.tmap",
                        "data/cv_pacbio_ENCFF694DIE/stringtie.stringtie.gtf.tmap",
                        "data/cv_SRR307911_hisat/stringtie.stringtie.gtf.tmap"],
         "tmap_file2":  ["data/cv_K562_cDNA/isoquant.isoquant.gtf.tmap",
-                        "data/cv_Hek293T_dRNA/isoquant.isoquant.gtf.tmap",
+                        "data/cv_ENCFF771DIX_dRNA/isoquant.isoquant.gtf.tmap",
+                    #     "data/cv_Hct116_dRNA/isoquant.isoquant.gtf.tmap",
                        "data/cv_pacbio_ENCFF694DIE/isoquant.isoquant.gtf.tmap",
                        "data/cv_SRR307911_hisat/scallop2.scallop2.gtf.tmap"],
         "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF],
@@ -192,9 +201,9 @@ def test_all_parallel():
         #                               "train_output/pacbio_ENCFF450VAU_stringtie/models", "train_output/SRR307903_stringtie/models"],
         # "pretrained_model_folder2" : ["train_output/cDNA-NA12878_isoquant/models", "train_output/dRNA-NA12878_isoquant/models",
                                     #   "train_output/pacbio_ENCFF450VAU_isoquant/models", "train_output/SRR307903_scallop2/models"]
-        "pretrained_config1" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_stringtie_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-NA12878_stringtie_config.pkl",
+        "pretrained_config1" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_stringtie_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_stringtie_config.pkl",
                                 f"{PROJECT_CONFIG_DIR}/pacbio_ENCFF450VAU_stringtie_config.pkl", f"{PROJECT_CONFIG_DIR}/SRR307903_stringtie_config.pkl"],
-        "pretrained_config2" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-NA12878_isoquant_config.pkl",
+        "pretrained_config2" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_isoquant_config.pkl",
                                 f"{PROJECT_CONFIG_DIR}/pacbio_ENCFF450VAU_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/SRR307903_scallop2_config.pkl"]
     }
     
@@ -231,58 +240,58 @@ def test_all_parallel():
             except Exception as exc:
                 print(f"❌ Dataset {dataset_name} failed with exception: {exc}")
 
-def test_all():
-    # data/cv_Hek293T_dRNA  data/cv_K562_cDNA  data/cv_pacbio_ENCFF694DIE  data/cv_SRR307911_hisat
-    # data/cv_Hek293T_dRNA/SGNex_Hek293T_dRNA.sorted.bam  data/cv_pacbio_ENCFF694DIE/ENCFF694DIE.sorted.bam
-    # data/cv_K562_cDNA/SGNex_K562_cDNA.sorted.bam        data/cv_SRR307911_hisat/hisat.sorted.bam
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    test_configs = {
-        "prefix": ["cDNA-K562","dRNA-Hek293T", "pacbio_ENCFF694DIE", "SRR307911"],
-        "bam_file": ["data/cv_K562_cDNA/SGNex_K562_cDNA.sorted.bam",
-                     "data/cv_Hek293T_dRNA/SGNex_Hek293T_dRNA.sorted.bam",
-                     "data/cv_pacbio_ENCFF694DIE/ENCFF694DIE.sorted.bam",
-                     "data/cv_SRR307911_hisat/hisat.sorted.bam"],
-        "gtf_file1": ["data/cv_K562_cDNA/stringtie.gtf", 
-                      "data/cv_Hek293T_dRNA/stringtie.gtf",
-                      "data/cv_pacbio_ENCFF694DIE/stringtie.gtf",
-                      "data/cv_SRR307911_hisat/stringtie.gtf"],
-        "gtf_file2": ["data/cv_K562_cDNA/isoquant.gtf", 
-                      "data/cv_Hek293T_dRNA/isoquant.gtf",
-                      "data/cv_pacbio_ENCFF694DIE/isoquant.gtf",
-                      "data/cv_SRR307911_hisat/scallop2.gtf"],
-        "tmap_file1":  ["data/cv_K562_cDNA/stringtie.stringtie.gtf.tmap",
-                        "data/cv_Hek293T_dRNA/stringtie.stringtie.gtf.tmap",
-                       "data/cv_pacbio_ENCFF694DIE/stringtie.stringtie.gtf.tmap",
-                       "data/cv_SRR307911_hisat/stringtie.stringtie.gtf.tmap"],
-        "tmap_file2":  ["data/cv_K562_cDNA/isoquant.isoquant.gtf.tmap",
-                        "data/cv_Hek293T_dRNA/isoquant.isoquant.gtf.tmap",
-                       "data/cv_pacbio_ENCFF694DIE/isoquant.isoquant.gtf.tmap",
-                       "data/cv_SRR307911_hisat/scallop2.scallop2.gtf.tmap"],
-        "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF],
-        "pretrained_model_folder1" : ["train_output/cDNA-NA12878_stringtie/models", "train_output/dRNA-NA12878_stringtie/models",
-                                      "train_output/pacbio_ENCFF450VAU_stringtie/models", "train_output/SRR307903_stringtie/models"],
-        "pretrained_model_folder2" : ["train_output/cDNA-NA12878_isoquant/models", "train_output/dRNA-NA12878_isoquant/models",
-                                      "train_output/pacbio_ENCFF450VAU_isoquant/models", "train_output/SRR307903_scallop2/models"]
+# def test_all():
+#     # data/cv_Hek293T_dRNA  data/cv_K562_cDNA  data/cv_pacbio_ENCFF694DIE  data/cv_SRR307911_hisat
+#     # data/cv_Hek293T_dRNA/SGNex_Hek293T_dRNA.sorted.bam  data/cv_pacbio_ENCFF694DIE/ENCFF694DIE.sorted.bam
+#     # data/cv_K562_cDNA/SGNex_K562_cDNA.sorted.bam        data/cv_SRR307911_hisat/hisat.sorted.bam
+#     os.makedirs(OUTPUT_DIR, exist_ok=True)
+#     test_configs = {
+#         "prefix": ["cDNA-K562","dRNA-Hek293T", "pacbio_ENCFF694DIE", "SRR307911"],
+#         "bam_file": ["data/cv_K562_cDNA/SGNex_K562_cDNA.sorted.bam",
+#                      "data/cv_Hek293T_dRNA/SGNex_Hek293T_dRNA.sorted.bam",
+#                      "data/cv_pacbio_ENCFF694DIE/ENCFF694DIE.sorted.bam",
+#                      "data/cv_SRR307911_hisat/hisat.sorted.bam"],
+#         "gtf_file1": ["data/cv_K562_cDNA/stringtie.gtf", 
+#                       "data/cv_Hek293T_dRNA/stringtie.gtf",
+#                       "data/cv_pacbio_ENCFF694DIE/stringtie.gtf",
+#                       "data/cv_SRR307911_hisat/stringtie.gtf"],
+#         "gtf_file2": ["data/cv_K562_cDNA/isoquant.gtf", 
+#                       "data/cv_Hek293T_dRNA/isoquant.gtf",
+#                       "data/cv_pacbio_ENCFF694DIE/isoquant.gtf",
+#                       "data/cv_SRR307911_hisat/scallop2.gtf"],
+#         "tmap_file1":  ["data/cv_K562_cDNA/stringtie.stringtie.gtf.tmap",
+#                         "data/cv_Hek293T_dRNA/stringtie.stringtie.gtf.tmap",
+#                        "data/cv_pacbio_ENCFF694DIE/stringtie.stringtie.gtf.tmap",
+#                        "data/cv_SRR307911_hisat/stringtie.stringtie.gtf.tmap"],
+#         "tmap_file2":  ["data/cv_K562_cDNA/isoquant.isoquant.gtf.tmap",
+#                         "data/cv_Hek293T_dRNA/isoquant.isoquant.gtf.tmap",
+#                        "data/cv_pacbio_ENCFF694DIE/isoquant.isoquant.gtf.tmap",
+#                        "data/cv_SRR307911_hisat/scallop2.scallop2.gtf.tmap"],
+#         "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF],
+#         "pretrained_model_folder1" : ["train_output/cDNA-NA12878_stringtie/models", "train_output/dRNA-NA12878_stringtie/models",
+#                                       "train_output/pacbio_ENCFF450VAU_stringtie/models", "train_output/SRR307903_stringtie/models"],
+#         "pretrained_model_folder2" : ["train_output/cDNA-NA12878_isoquant/models", "train_output/dRNA-NA12878_isoquant/models",
+#                                       "train_output/pacbio_ENCFF450VAU_isoquant/models", "train_output/SRR307903_scallop2/models"]
 
-    }
-    test_configs_df = pd.DataFrame(test_configs)
-    for index, row in test_configs_df.iterrows():
-        prefix = row["prefix"]
-        bam_file = row["bam_file"]
-        gtf_file1 = row["gtf_file1"]
-        gtf_file2 = row["gtf_file2"]
-        tmap_file1 = row["tmap_file1"]
-        tmap_file2 = row["tmap_file2"]
-        ref = row["ref_anno_gtf"]
-        pretrained_model_folder1 = row["pretrained_model_folder1"]
-        pretrained_model_folder2 = row["pretrained_model_folder2"]
+#     }
+#     test_configs_df = pd.DataFrame(test_configs)
+#     for index, row in test_configs_df.iterrows():
+#         prefix = row["prefix"]
+#         bam_file = row["bam_file"]
+#         gtf_file1 = row["gtf_file1"]
+#         gtf_file2 = row["gtf_file2"]
+#         tmap_file1 = row["tmap_file1"]
+#         tmap_file2 = row["tmap_file2"]
+#         ref = row["ref_anno_gtf"]
+#         pretrained_model_folder1 = row["pretrained_model_folder1"]
+#         pretrained_model_folder2 = row["pretrained_model_folder2"]
 
-        print(f"Processing {prefix}...")
-        prefix1 = (prefix + "_stringtie") 
-        prefix2 = (prefix + "_isoquant") if not prefix.startswith("SRR") else (prefix + "_scallop2")
-        # def install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file):
-        test_with_pretrained(prefix1, RNASEQ_DIR, OUTPUT_DIR, bam_file, gtf_file1, ref, tmap_file1, pretrained_model_folder1)
-        test_with_pretrained(prefix2, RNASEQ_DIR, OUTPUT_DIR, bam_file, gtf_file2, ref, tmap_file2, pretrained_model_folder2)
+#         print(f"Processing {prefix}...")
+#         prefix1 = (prefix + "_stringtie") 
+#         prefix2 = (prefix + "_isoquant") if not prefix.startswith("SRR") else (prefix + "_scallop2")
+#         # def install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file):
+#         test_with_pretrained(prefix1, RNASEQ_DIR, OUTPUT_DIR, bam_file, gtf_file1, ref, tmap_file1, pretrained_model_folder1)
+#         test_with_pretrained(prefix2, RNASEQ_DIR, OUTPUT_DIR, bam_file, gtf_file2, ref, tmap_file2, pretrained_model_folder2)
 
 
 def main():

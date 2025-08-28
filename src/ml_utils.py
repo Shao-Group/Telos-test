@@ -58,7 +58,7 @@ def stratified_split(df, validation_chrom_file, label_col='label', return_mask=F
         lambda x: x if x.startswith('chr') else f'chr{x}'
     )
     
-    train_chroms = ['chr'+str(i) for i in range(1, 6)]
+    train_chroms = ['chr'+str(i) for i in range(1, 11)]
     # test_chroms = ['chr'+str(i) for i in range(6, 21)]
     # test_chroms.extend(['chrX', 'chrY'])
     test_chroms = set(df_copy['chrom_normalized'].unique()) - set(train_chroms)
@@ -141,7 +141,7 @@ def load_model(model_type, config):
             learning_rate=config["learning_rate"],
             subsample=config["subsample"],
             colsample_bytree=config["colsample_bytree"],
-            base_score=config.get("base_score", 0.5),
+            # base_score=config.get("base_score", 0.5),
             # use_label_encoder=False,
             objective="binary:logistic",
             eval_metric="aucpr"
@@ -151,7 +151,7 @@ def load_model(model_type, config):
         return RandomForestClassifier(
             n_estimators=config["n_estimators"],
             max_depth=config["max_depth"],
-            n_jobs=-1,
+            # n_jobs=-1,
             random_state=42
         )
     else:

@@ -6,12 +6,12 @@ class Config:
 
     def __init__(self, bam_file, gtf_file, prefix, output_dir, rnaseqtools_dir, ref_anno_gtf, tmap_file):
         # your existing defaults
-        self.window_size = 200
+        self.window_size = 300
         self.min_mapq = 10
         self.soft_clip_window = 10
-        self.splice_site_window = 100
-        self.coverage_window = 100
-        self.density_window = 100
+        self.splice_site_window = 300
+        self.coverage_window = 300
+        self.density_window = 300
         self.normalize = False
         
         # embedding configuration   

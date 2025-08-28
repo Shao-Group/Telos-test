@@ -15,11 +15,11 @@ from config import load_config, Config
 
 # —— USER SETTINGS ——
 data_names = [
-    "cDNA-NA12878","dRNA-NA12878", "pacbio_ENCFF450VAU", "SRR307903"
+    "cDNA-NA12878","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903"
 ]
 name_dict = {
     "cDNA-NA12878" : "NA12878 cDNA",
-    "dRNA-NA12878" : "NA12878 dRNA",
+    "dRNA-ENCFF155CFF" : "ENCFF155CFF dRNA",
     "pacbio_ENCFF450VAU": "ENCFF450VAU",
     "SRR307903" : "SRR307903"
 }

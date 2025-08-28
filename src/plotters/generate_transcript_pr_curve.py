@@ -72,8 +72,8 @@ def main():
     parser.add_argument('--config_folder', required=True, help='Path to the configuration file')
     args = parser.parse_args()
 
-    train_prefix = ["cDNA-NA12878","dRNA-NA12878", "pacbio_ENCFF450VAU", "SRR307903"]
-    test_prefix = ["cDNA-K562","dRNA-Hek293T", "pacbio_ENCFF694DIE", "SRR307911"]
+    train_prefix = ["cDNA-NA12878","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903"]
+    test_prefix = ["cDNA-K562","dRNA-ENCFF771DIX", "pacbio_ENCFF694DIE", "SRR307911"]
     
     # Create pairs of datasets
     for i, (train_p, test_p) in enumerate(zip(train_prefix, test_prefix)):
