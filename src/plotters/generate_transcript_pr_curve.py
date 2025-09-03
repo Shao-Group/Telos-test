@@ -16,7 +16,7 @@ from argparse import ArgumentParser
 
 TRANSCRIPT_PLOT_FOLDER = "plots/transcript_pr_curves_compare"
 
-def plot_pr_curves_on_subplot(config: Config, ax, title_prefix=""):
+def plot_pr_curves_on_subplot(config: Config, ax, title_prefix="", is_train=False):
     """
     Reads all ROC-like files in the specified folder, parses sensitivity (recall)
     and precision values, and plots Precision-Recall curves on the given subplot axis.
@@ -25,7 +25,8 @@ def plot_pr_curves_on_subplot(config: Config, ax, title_prefix=""):
 
     # get auc map where key is the tool name and value is the auc in the two column csv
     auc_map = {}
-    with open(config.auc_file, 'r') as f:
+    auc_file = config.auc_file_train if is_train else config.auc_file_val
+    with open(auc_file, 'r') as f:
         for line in f:
             if line.startswith('label'):
                 continue
@@ -33,7 +34,8 @@ def plot_pr_curves_on_subplot(config: Config, ax, title_prefix=""):
             auc_map[tool_name] = float(auc)
 
     # Find all files in the folder
-    file_paths = glob.glob(os.path.join(config.transcript_pr_data, '*.roc'))
+    suffix = "train" if is_train else "val"
+    file_paths = glob.glob(os.path.join(config.transcript_pr_data, f'*{suffix}.roc'))
     file_paths = sorted(file_paths, reverse=True)
     for file_path in file_paths:
         recalls = []
@@ -51,11 +53,15 @@ def plot_pr_curves_on_subplot(config: Config, ax, title_prefix=""):
         
         # Plot the curve for this file
         label =  os.path.basename(file_path) 
+
         label = label + " \n[ AuPR:" + f"{auc_map[label.split('.')[0].split('-updated-cov')[0]]/10000.0:.4f}" + " ]"
         label = tool + " " + label
+        label = label.replace('_', '').replace(suffix, '')
+        # print(label)
         label = label.replace('-', ' ').replace('.roc', '').title()
         label = label.replace('Updated Cov', '' ) # '\n(Updated Coverage)')
         label = label.replace('Aupr', 'AuPR')
+        # label = label.split('_')[0]
         
         ax.plot(recalls, precisions, label=label)
 
@@ -70,10 +76,11 @@ def main():
     os.makedirs(TRANSCRIPT_PLOT_FOLDER, exist_ok=True)
     parser = ArgumentParser()
     parser.add_argument('--config_folder', required=True, help='Path to the configuration file')
+    parser.add_argument('--is_train', action='store_true', help='Is training chromosomes')
     args = parser.parse_args()
 
-    train_prefix = ["cDNA-NA12878","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903"]
-    test_prefix = ["cDNA-K562","dRNA-ENCFF771DIX", "pacbio_ENCFF694DIE", "SRR307911"]
+    train_prefix = ["cDNA-ENCFF023EXJ", "cDNA-NA12878", "dRNA-ENCFF155CFF", "dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903"]
+    test_prefix = ["cDNA-ENCFF263YFG", "cDNA-K562","dRNA-ENCFF771DIX", "dRNA-Hek293T", "pacbio_ENCFF694DIE", "SRR307911"]
     
     # Create pairs of datasets
     for i, (train_p, test_p) in enumerate(zip(train_prefix, test_prefix)):
@@ -87,8 +94,8 @@ def main():
         train_config1 = load_config(os.path.join(args.config_folder, f"{train_prefix1}_config.pkl"))
         train_config2 = load_config(os.path.join(args.config_folder, f"{train_prefix2}_config.pkl"))
         
-        plot_pr_curves_on_subplot(train_config1, axes[0, 0], "Training Dataset")
-        plot_pr_curves_on_subplot(train_config2, axes[0, 1], "Training Dataset")
+        plot_pr_curves_on_subplot(train_config1, axes[0, 0], "Training Dataset", args.is_train)
+        plot_pr_curves_on_subplot(train_config2, axes[0, 1], "Training Dataset", args.is_train)
         
         # Testing datasets - bottom row
         test_prefix1 = (test_p + "_stringtie")
@@ -96,11 +103,11 @@ def main():
         test_config1 = load_config(os.path.join(args.config_folder, f"{test_prefix1}_config.pkl"))
         test_config2 = load_config(os.path.join(args.config_folder, f"{test_prefix2}_config.pkl"))
         
-        plot_pr_curves_on_subplot(test_config1, axes[1, 0], "Testing Dataset")
-        plot_pr_curves_on_subplot(test_config2, axes[1, 1], "Testing Dataset")
+        plot_pr_curves_on_subplot(test_config1, axes[1, 0], "Testing Dataset", args.is_train)
+        plot_pr_curves_on_subplot(test_config2, axes[1, 1], "Testing Dataset", args.is_train)
         
         plt.tight_layout()
-        plt.savefig(f'{TRANSCRIPT_PLOT_FOLDER}/pr_curves_compare_{train_p}_vs_{test_p}.pdf', format='pdf', dpi=300, bbox_inches='tight')
+        plt.savefig(f'{TRANSCRIPT_PLOT_FOLDER}/pr_curves_compare_{train_p}_vs_{test_p}{"-train" if args.is_train else "-test"}.pdf', format='pdf', dpi=300, bbox_inches='tight')
         plt.close()  # Close the figure to free memory
         
         print(f"Finished plotting PR curve comparison for {train_p} (train) vs {test_p} (test)")

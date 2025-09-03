@@ -70,7 +70,7 @@ def plot_pr(config_folder):
             tools[1] : load_config(os.path.join(config_folder, f"{name}_{tools[1]}_config.pkl"))
         }
         for j, site in enumerate(site_types):
-            print(f"Plotting {name} {site} {i} {j}")
+            # print(f"Plotting {name} {site} {i} {j}")
             ax = axes[i, j]
             
             pr_files  = {
@@ -124,7 +124,7 @@ def plot_pr(config_folder):
                 
                 # Check for duplicates in coverage file
                 n_unique_positions = df_cov[[f"{site}_chrom", f"{site}_pos"]].drop_duplicates().shape[0]
-                print(f"Unique positions in coverage file: {n_unique_positions}, Total rows: {len(df_cov)} for {tool} {site}")
+                # print(f"Unique positions in coverage file: {n_unique_positions}, Total rows: {len(df_cov)} for {tool} {site}")
                 
                 if len(df_cov) > n_unique_positions:
                     # print(f"WARNING: Coverage file has duplicates! Averaging coverage values...")

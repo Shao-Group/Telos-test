@@ -41,6 +41,7 @@ class Config:
         self.candidate_file     = None
         self.ref_candidate_file = None
         self.validation_chromosomes_file = None
+        self.train_chromosomes_file = None
 
         self.tss_selected_feature_file = None
         self.tes_selected_feature_file = None
@@ -60,13 +61,14 @@ class Config:
         self.transcript_pr_data     = os.path.join(self.reports_output_dir, "transcript_pr_data")
         self.pr_data_dir            = os.path.join(self.reports_output_dir, "pr_data")
         self.feature_importance_dir = os.path.join(self.reports_output_dir, "feature_importance")
-        self.gffcompare_dir        = os.path.join(self.reports_output_dir, "gffcompare")
+        self.gffcompare_dir_train        = os.path.join(self.reports_output_dir, "gffcompare_train")
+        self.gffcompare_dir_val        = os.path.join(self.reports_output_dir, "gffcompare_val")
         self.metrics_output_dir    = os.path.join(self.reports_output_dir, "metrics")
 
         for d in (self.data_output_dir, self.features_output_dir,
                   self.reports_output_dir, self.predictions_output_dir,
                   self.models_output_dir, self.pr_data_dir,
-                  self.feature_importance_dir, self.gffcompare_dir, 
+                  self.feature_importance_dir, self.gffcompare_dir_train, self.gffcompare_dir_val, 
                   self.transcript_pr_data, self.updated_cov_dir, self.metrics_output_dir):
             os.makedirs(d, exist_ok=True)
 
@@ -88,7 +90,9 @@ class Config:
         self.tss_softclip_labeled_file = os.path.join(self.features_output_dir, f"{p}_tss_softclip_labeled.tsv")
         self.tes_softclip_labeled_file = os.path.join(self.features_output_dir, f"{p}_tes_softclip_labeled.tsv")
         
-        self.auc_file           = os.path.join(self.transcript_pr_data, f"{p}_auc.csv")
+        self.auc_file_train           = os.path.join(self.transcript_pr_data, f"{p}_auc_train.csv")
+        self.auc_file_val           = os.path.join(self.transcript_pr_data, f"{p}_auc_val.csv")
+
 
     @classmethod
     def create(cls, bam_file, gtf_file, prefix, output_dir, rnaseqtools_dir, ref_anno_gtf, tmap_file):

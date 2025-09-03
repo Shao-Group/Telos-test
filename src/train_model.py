@@ -1,10 +1,10 @@
+import joblib
 import argparse
 import yaml
 import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from joblib import dump
 from sklearn.preprocessing import StandardScaler
 from config import Config, load_config
 from ml_utils import stratified_split, evaluate_model, load_model, load_tmap_labels, chrom_to_int
@@ -20,149 +20,7 @@ from sklearn.metrics import (
     accuracy_score, roc_auc_score, average_precision_score,
     classification_report
 )
-
-# class TabularNeuralNetwork:
-#     """Neural Network wrapper for tabular data with sklearn-like interface"""
-    
-#     def __init__(self, random_state=42):
-#         self.model = None
-#         self.scaler = StandardScaler()
-#         self.random_state = random_state
-#         self.is_fitted = False
-#         tf.random.set_seed(random_state)
-#         np.random.seed(random_state)
-    
-#     def _build_model(self, input_dim):
-#         """Build neural network architecture optimized for tabular data"""
-#         model = Sequential([
-#             # Input layer with batch normalization
-#             Dense(128, activation='relu', input_shape=(input_dim,)),
-#             BatchNormalization(),
-#             Dropout(0.3),
-            
-#             # Hidden layers with decreasing size
-#             Dense(96, activation='relu'),
-#             BatchNormalization(), 
-#             Dropout(0.25),
-            
-#             Dense(64, activation='relu'),
-#             BatchNormalization(),
-#             Dropout(0.2),
-            
-#             Dense(32, activation='relu'),
-#             Dropout(0.15),
-            
-#             # Output layer for binary classification
-#             Dense(1, activation='sigmoid')
-#         ])
-        
-#         model.compile(
-#             optimizer=Adam(learning_rate=0.001),
-#             loss='binary_crossentropy',
-#             metrics=['accuracy', 'precision', 'recall']
-#         )
-        
-#         return model
-    
-#     def fit(self, X, y):
-#         """Fit the neural network"""
-#         # Scale the features
-#         X_scaled = self.scaler.fit_transform(X)
-        
-#         # Build model
-#         self.model = self._build_model(X.shape[1])
-        
-#         # Callbacks for training
-#         callbacks = [
-#             EarlyStopping(
-#                 monitor='val_loss',
-#                 patience=15,
-#                 restore_best_weights=True,
-#                 verbose=0
-#             ),
-#             ReduceLROnPlateau(
-#                 monitor='val_loss',
-#                 factor=0.5,
-#                 patience=8,
-#                 min_lr=1e-6,
-#                 verbose=0
-#             )
-#         ]
-        
-#         # Train the model
-#         history = self.model.fit(
-#             X_scaled, y,
-#             epochs=100,
-#             batch_size=32,
-#             validation_split=0.2,
-#             callbacks=callbacks,
-#             verbose=0
-#         )
-        
-#         self.is_fitted = True
-#         return self
-    
-#     def predict(self, X):
-#         """Make binary predictions"""
-#         if not self.is_fitted:
-#             raise ValueError("Model must be fitted before making predictions")
-        
-#         X_scaled = self.scaler.transform(X)
-#         probabilities = self.model.predict(X_scaled, verbose=0)
-#         return (probabilities > 0.5).astype(int).flatten()
-    
-#     def predict_proba(self, X):
-#         """Predict class probabilities"""
-#         if not self.is_fitted:
-#             raise ValueError("Model must be fitted before making predictions")
-        
-#         X_scaled = self.scaler.transform(X) 
-#         probabilities = self.model.predict(X_scaled, verbose=0).flatten()
-        
-#         # Return probabilities in sklearn format [prob_class_0, prob_class_1]
-#         return np.column_stack([1 - probabilities, probabilities])
-    
-#     def save_model(self, filepath):
-#         """Save the model and scaler"""
-#         if not self.is_fitted:
-#             raise ValueError("Model must be fitted before saving")
-        
-#         # Save TensorFlow model
-#         model_path = filepath.replace('.json', '_model.h5')
-#         self.model.save(model_path)
-        
-#         # Save scaler
-#         scaler_path = filepath.replace('.json', '_scaler.joblib')
-#         dump(self.scaler, scaler_path)
-        
-#         # Save metadata
-#         metadata = {
-#             'model_path': model_path,
-#             'scaler_path': scaler_path,
-#             'random_state': self.random_state
-#         }
-        
-#         import json
-#         with open(filepath, 'w') as f:
-#             json.dump(metadata, f)
-    
-#     def load_model(self, filepath):
-#         """Load the model and scaler"""
-#         import json
-#         from joblib import load
-        
-#         # Load metadata
-#         with open(filepath, 'r') as f:
-#             metadata = json.load(f)
-        
-#         # Load TensorFlow model
-#         self.model = tf.keras.models.load_model(metadata['model_path'])
-        
-#         # Load scaler
-#         self.scaler = load(metadata['scaler_path'])
-        
-#         self.random_state = metadata['random_state']
-#         self.is_fitted = True
+from sklearn.pipeline import Pipeline
 
 def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
     df_cov = pd.read_csv(project_config.cov_file, sep="\t")
@@ -182,7 +40,7 @@ def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
     df['min_confidence'] = np.minimum(df['tss_confidence'], df['tes_confidence'])
     df['confidence_product'] = df['tss_confidence'] * df['tes_confidence']
     
-    X_train, X_test, y_train, y_test, train_mask, test_mask = stratified_split(df, validation_chrom_file=project_config.validation_chromosomes_file, return_mask=True)
+    X_train, X_test, y_train, y_test, train_mask, test_mask = stratified_split(df, validation_chrom_file=project_config.validation_chromosomes_file, train_chrom_file=project_config.train_chromosomes_file, return_mask=True)
     
     # MINIMAL MODIFICATION: Better feature selection for stage 2
     drop = [
@@ -197,22 +55,27 @@ def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
     base_features = [c for c in df.columns if c not in drop]
     features = [f for f in base_features if f in df.columns]  # Only keep existing features
     
+
     X_train = X_train[features]
     X_test  = X_test[features]
 
     print(f"Training stage 2 with {len(features)} features")
-    print(f"Key features: {features[:10]}")
+    print(f"Key features:")
+    for f in features:
+        print(f)
         
     # MINIMAL MODIFICATION: Optimize hyperparameters for transcript prediction
     clf_xgb = XGBClassifier(
-            n_estimators=500,  # More trees
-            max_depth=16,       # Deeper for interactions
-            learning_rate=0.05, # Lower learning rate
+            n_estimators=200,  # More trees
+            max_depth=8,       # Deeper for interactions
+            learning_rate=0.1, # Lower learning rate
             subsample=0.8,
             colsample_bytree=0.8,
             objective='binary:logistic',
             random_state=42,
-            eval_metric='aucpr'
+            reg_lambda = 3,
+            reg_alpha = 0.5
+            # eval_metric='aucpr'
             # scale_pos_weight=len(y_train[y_train==0]) / max(len(y_train[y_train==1]), 1)  # Handle imbalance
         )
     clf_rf = RandomForestClassifier(
@@ -220,13 +83,9 @@ def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
         max_depth=8,
         random_state=42
     )
-    # MINIMAL MODIFICATION: Add feature scaling for better performance across different assemblers
-    from sklearn.preprocessing import StandardScaler
-    # pipeline
-    from sklearn.pipeline import Pipeline
     
     clf = Pipeline([
-        ('scaler', StandardScaler()),
+        # ('scaler', StandardScaler()),
         ('clf', clf_xgb)
     ])
     
@@ -242,7 +101,6 @@ def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
     # y_prob = clf.predict_proba(X_test)[:, 1]
 
     # save model
-    import joblib
     joblib.dump(clf, f"{project_config.models_output_dir}/xgboost_stage2_model.joblib")
     # clf.save_model(f"{project_config.models_output_dir}/neural_network_stage2_model.json")
 
@@ -268,15 +126,26 @@ def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
     pred_df['transcript_id'] = df.loc[test_mask, 'transcript_id'].values
     pred_df['pred_prob']      = y_prob
     pred_df['pred_label']     = y_pred
-    pred_df = pred_df[['transcript_id','pred_prob','pred_label']]
+    pred_df['label']          = df.loc[test_mask, 'label'].values
+    pred_df = pred_df[['transcript_id','pred_prob','pred_label','label']]
 
-    pred_df.to_csv(os.path.join(project_config.predictions_output_dir, f"{model_type}_stage2_predictions.csv"),sep="\t" , index=False)
+    pred_df.to_csv(os.path.join(project_config.predictions_output_dir, f"{model_type}_stage2_predictions_val.csv"),sep="\t" , index=False)
 
+
+    y_pred_train = clf.predict(X_train)
+    y_prob_train = clf.predict_proba(X_train)[:, 1]
+    pred_df_train = X_train.copy()
+    pred_df_train['transcript_id'] = df.loc[train_mask, 'transcript_id'].values
+    pred_df_train['pred_prob']      = y_prob_train
+    pred_df_train['pred_label']     = y_pred_train
+    pred_df_train['label']          = df.loc[train_mask, 'label'].values
+    pred_df_train = pred_df_train[['transcript_id','pred_prob','pred_label','label']]
+    pred_df_train.to_csv(os.path.join(project_config.predictions_output_dir, f"{model_type}_stage2_predictions_train.csv"),sep="\t" , index=False)
 
 def train_and_evaluate_stage1(df, model_type, model_config, project_config, site_type):
     drop = ["chrom", "position", "strand", "label"]
 
-    X_train, X_val, y_train, y_val = stratified_split(df, validation_chrom_file=project_config.validation_chromosomes_file)
+    X_train, X_val, y_train, y_val = stratified_split(df, validation_chrom_file=project_config.validation_chromosomes_file, train_chrom_file=project_config.train_chromosomes_file)
     
     # Use selected features if available, otherwise use all numeric features
     
@@ -304,9 +173,9 @@ def train_and_evaluate_stage1(df, model_type, model_config, project_config, site
 
     
     if model_type == "xgboost":
-        model.save_model(f"{project_config.models_output_dir}/{site_type}_{model_type}_model.json")
+        joblib.dump(model, os.path.join(project_config.models_output_dir, f"{site_type}_{model_type}_model.joblib"))
     elif model_type == "randomforest":
-        dump(model, os.path.join(project_config.models_output_dir, f"{site_type}_{model_type}_model.joblib"))
+        joblib.dump(model, os.path.join(project_config.models_output_dir, f"{site_type}_{model_type}_model.joblib"))
     # elif model_type == "logistic":
     #     dump(model, os.path.join(project_config.models_output_dir, f"{site_type}_{model_type}_model.joblib"))
 
@@ -352,6 +221,8 @@ def train_and_evaluate_stage1(df, model_type, model_config, project_config, site
 
     X_df.to_csv(os.path.join(project_config.predictions_output_dir, f"{site_type}_{model_type}_predictions.csv"), index=False)
 
+    # pred_df_train = X_train.copy()
+
     
     return metrics, model, X_df
 
@@ -365,6 +236,7 @@ def main():
 
     project_config = load_config(args.project_config)
     project_config.validation_chromosomes_file = os.path.join(project_config.data_output_dir, "validation_chromosomes.txt")
+    project_config.train_chromosomes_file = os.path.join(project_config.data_output_dir, "train_chromosomes.txt")
 
     for model_type in ["xgboost", "randomforest"]:
         # Check if selected feature files exist, otherwise use original labeled files
@@ -372,7 +244,7 @@ def main():
         print(f"Selected features file not found, using original: {project_config.tss_labeled_file}")
         df_tss = pd.read_csv(project_config.tss_labeled_file, dtype={"chrom": str})
             
-        with open(os.path.join(args.model_config_folder, f"tss_{model_type}_config.yaml")) as f:
+        with open(os.path.join(args.model_config_folder, f"{model_type}_config.yaml")) as f:
             model_config = yaml.safe_load(f)
 
         metrics, model, df_tss_pred = train_and_evaluate_stage1(df_tss, model_type, model_config, project_config, "tss")
@@ -382,8 +254,6 @@ def main():
         print(f"Selected features file not found, using original: {project_config.tes_labeled_file}")
         df_tes = pd.read_csv(project_config.tes_labeled_file, dtype={"chrom": str})
             
-        with open(os.path.join(args.model_config_folder, f"tes_{model_type}_config.yaml")) as f:
-            model_config = yaml.safe_load(f)
 
         metrics, model, df_tes_pred = train_and_evaluate_stage1(df_tes, model_type, model_config, project_config, "tes")
 
@@ -396,3 +266,7 @@ if __name__ == "__main__":
     main()
     
 
+
+
+# results for cdna from lrgasp
+# results for all test/train

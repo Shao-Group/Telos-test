@@ -9,9 +9,11 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, classification_report
 )
+from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
 import numpy as np
 import re
+from sklearn.preprocessing import StandardScaler
 
 
 def normalize_chrom(c):
@@ -43,7 +45,7 @@ def load_tmap_labels(tmap_path):
     return df[['transcript_id', 'label']]
 
 
-def stratified_split(df, validation_chrom_file, label_col='label', return_mask=False):
+def stratified_split(df, validation_chrom_file, train_chrom_file, label_col='label', return_mask=False):
     # X_train, X_val, y_train, y_val =  train_test_split(df, df[label_col], test_size=test_size, stratify=df[label_col], random_state=seed)
     # split based on chromosome 
     # 
@@ -76,6 +78,10 @@ def stratified_split(df, validation_chrom_file, label_col='label', return_mask=F
 
     with open(validation_chrom_file, 'w') as f:
         for chrom in X_val['chrom'].unique():
+            f.write(f"{chrom}\n")
+    
+    with open(train_chrom_file, 'w') as f:
+        for chrom in X_train['chrom'].unique():
             f.write(f"{chrom}\n")
 
     print(f"Train size: {X_train.shape}, Validation size: {X_val.shape}")
@@ -135,25 +141,35 @@ def evaluate_model(y_true, y_pred, y_prob, prdata_path, plot_path=None):
 def load_model(model_type, config):
     if model_type == "xgboost":
         import xgboost as xgb
-        return xgb.XGBClassifier(
+        xgb_model = xgb.XGBClassifier(
             n_estimators=config["n_estimators"],
             max_depth=config["max_depth"],
             learning_rate=config["learning_rate"],
             subsample=config["subsample"],
             colsample_bytree=config["colsample_bytree"],
+            reg_lambda=config["reg_lambda"],
+            reg_alpha=config["reg_alpha"],
             # base_score=config.get("base_score", 0.5),
             # use_label_encoder=False,
-            objective="binary:logistic",
-            eval_metric="aucpr"
+            objective="binary:logistic"
+            # eval_metric="aucpr",
+            # reg_lambda=config["reg_lambda"]
         )
-
+        return Pipeline([
+            ('scaler', StandardScaler()),
+            ('clf', xgb_model)
+        ])
     elif model_type == "randomforest":
-        return RandomForestClassifier(
+        rf_model = RandomForestClassifier(
             n_estimators=config["n_estimators"],
             max_depth=config["max_depth"],
-            # n_jobs=-1,
+            max_features=config["max_features"],
             random_state=42
         )
+        return Pipeline([
+            ('scaler', StandardScaler()),
+            ('clf', rf_model)
+        ])
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
 

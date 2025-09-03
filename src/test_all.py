@@ -166,44 +166,55 @@ def test_all_parallel():
     """Parallel version of test_all() function"""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     test_configs = {
-        "prefix": ["cDNA-K562", 
-                #    "dRNA-Hek293T", 
-                    "dRNA-ENCFF771DIX",
+        "prefix": ["cDNA-K562",
+                   "cDNA-ENCFF263YFG", 
+                   "dRNA-Hek293T", 
+                   "dRNA-ENCFF771DIX",
                    "pacbio_ENCFF694DIE", 
                    "SRR307911"],
         "bam_file": ["data/cv_K562_cDNA/SGNex_K562_cDNA.sorted.bam",
+                    "data/cv_ENCFF263YFG_cDNA/ENCFF263YFG.sorted.bam",
+                    "data/cv_Hek293T_dRNA/SGNex_Hek293T_dRNA.sorted.bam",
                      "data/cv_ENCFF771DIX_dRNA/dRNA-ENCFF771DIX.sorted.bam",
                     #  "data/cv_Hct116_dRNA/Hct116_dRNA_wo.sorted.bam",
                      "data/cv_pacbio_ENCFF694DIE/ENCFF694DIE.sorted.bam",
                      "data/cv_SRR307911_hisat/hisat.sorted.bam"],
         "gtf_file1": ["data/cv_K562_cDNA/stringtie.gtf", 
+                      "data/cv_ENCFF263YFG_cDNA/stringtie.gtf",
+                      "data/cv_Hek293T_dRNA/stringtie.gtf",
                       "data/cv_ENCFF771DIX_dRNA/stringtie.gtf",
                     #   "data/cv_Hct116_dRNA/stringtie.gtf",
                       "data/cv_pacbio_ENCFF694DIE/stringtie.gtf",
                       "data/cv_SRR307911_hisat/stringtie.gtf"],
         "gtf_file2": ["data/cv_K562_cDNA/isoquant.gtf", 
+                      "data/cv_ENCFF263YFG_cDNA/isoquant.gtf",
+                      "data/cv_Hek293T_dRNA/isoquant.gtf",
                       "data/cv_ENCFF771DIX_dRNA/isoquant.gtf",
                     #   "data/cv_Hct116_dRNA/isoquant.gtf",
                       "data/cv_pacbio_ENCFF694DIE/isoquant.gtf",
                       "data/cv_SRR307911_hisat/scallop2.gtf"],
         "tmap_file1":  ["data/cv_K562_cDNA/stringtie.stringtie.gtf.tmap",
+                        "data/cv_ENCFF263YFG_cDNA/stringtie.stringtie.gtf.tmap",
+                        "data/cv_Hek293T_dRNA/stringtie.stringtie.gtf.tmap",
                         "data/cv_ENCFF771DIX_dRNA/stringtie.stringtie.gtf.tmap",
                     #     "data/cv_Hct116_dRNA/stringtie.stringtie.gtf.tmap",
                        "data/cv_pacbio_ENCFF694DIE/stringtie.stringtie.gtf.tmap",
                        "data/cv_SRR307911_hisat/stringtie.stringtie.gtf.tmap"],
         "tmap_file2":  ["data/cv_K562_cDNA/isoquant.isoquant.gtf.tmap",
+                        "data/cv_ENCFF263YFG_cDNA/isoquant.isoquant.gtf.tmap",
+                        "data/cv_Hek293T_dRNA/isoquant.isoquant.gtf.tmap",
                         "data/cv_ENCFF771DIX_dRNA/isoquant.isoquant.gtf.tmap",
                     #     "data/cv_Hct116_dRNA/isoquant.isoquant.gtf.tmap",
                        "data/cv_pacbio_ENCFF694DIE/isoquant.isoquant.gtf.tmap",
                        "data/cv_SRR307911_hisat/scallop2.scallop2.gtf.tmap"],
-        "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF],
+        "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF],
         # "pretrained_model_folder1" : ["train_output/cDNA-NA12878_stringtie/models", "train_output/dRNA-NA12878_stringtie/models",
         #                               "train_output/pacbio_ENCFF450VAU_stringtie/models", "train_output/SRR307903_stringtie/models"],
         # "pretrained_model_folder2" : ["train_output/cDNA-NA12878_isoquant/models", "train_output/dRNA-NA12878_isoquant/models",
                                     #   "train_output/pacbio_ENCFF450VAU_isoquant/models", "train_output/SRR307903_scallop2/models"]
-        "pretrained_config1" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_stringtie_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_stringtie_config.pkl",
+        "pretrained_config1" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_stringtie_config.pkl", f"{PROJECT_CONFIG_DIR}/cDNA-ENCFF023EXJ_stringtie_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_stringtie_config.pkl",f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_stringtie_config.pkl",
                                 f"{PROJECT_CONFIG_DIR}/pacbio_ENCFF450VAU_stringtie_config.pkl", f"{PROJECT_CONFIG_DIR}/SRR307903_stringtie_config.pkl"],
-        "pretrained_config2" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_isoquant_config.pkl",
+        "pretrained_config2" : [f"{PROJECT_CONFIG_DIR}/cDNA-NA12878_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/cDNA-ENCFF023EXJ_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_isoquant_config.pkl",
                                 f"{PROJECT_CONFIG_DIR}/pacbio_ENCFF450VAU_isoquant_config.pkl", f"{PROJECT_CONFIG_DIR}/SRR307903_scallop2_config.pkl"]
     }
     
@@ -218,6 +229,7 @@ def test_all_parallel():
                    row["pretrained_config2"])
         dataset_tasks.append(row_data)
     
+    # dataset_tasks = dataset_tasks[:1]
     # Process datasets in parallel (max 2 concurrent datasets to avoid overwhelming system)
     max_concurrent_datasets = min(4, len(dataset_tasks))
     print(f"🚀 Starting parallel testing with {max_concurrent_datasets} concurrent datasets...")
