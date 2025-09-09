@@ -75,7 +75,7 @@ class TranscriptLabelingPipeline:
 
 def main(project_config):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    cfg = TranscriptLabelingConfig(rnaseq_dir=Path(project_config.rnaseqtools_dir), data_file=Path(project_config.gtf_file), 
+    cfg = TranscriptLabelingConfig(rnaseq_dir=Path(project_config.rnaseqtools_dir), data_file=Path(project_config.gtf_file_all), 
                                    ref_anno=Path(project_config.ref_anno), out_dir=Path(project_config.data_output_dir),
                                    prefix=project_config.data_name)
     pipeline = TranscriptLabelingPipeline(cfg)

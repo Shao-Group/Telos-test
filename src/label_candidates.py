@@ -20,9 +20,27 @@ def load_reference(reference_path):
     ref_df = pd.read_csv(reference_path, sep=" ", header=None,
                          names=["site_type", "chrom", "position", "pos_strand_cnt", "neg_strand_cnt"],
                          dtype={"chrom": str})
+    
+    # Assign strand based on counts: +, -, or . for equal counts
     ref_df["strand"] = ref_df.apply(
-        lambda x: "+" if x["pos_strand_cnt"] > x["neg_strand_cnt"] else "-", axis=1
+        lambda x: "+" if x["pos_strand_cnt"] > x["neg_strand_cnt"] 
+                 else "-" if x["neg_strand_cnt"] > x["pos_strand_cnt"] 
+                 else ".", axis=1
     )
+    
+    # Find rows with equal counts (marked with ".")
+    equal_rows = ref_df[ref_df["strand"] == "."].copy()
+    
+    # Create two versions of equal rows - one positive, one negative
+    equal_pos = equal_rows.copy()
+    equal_pos["strand"] = "+"
+    equal_neg = equal_rows.copy()
+    equal_neg["strand"] = "-"
+    
+    # Remove original equal rows and add the duplicated ones
+    ref_df = ref_df[ref_df["strand"] != "."]
+    ref_df = pd.concat([ref_df, equal_pos, equal_neg], ignore_index=True)
+    
     ref_df = ref_df[["site_type", "chrom", "position", "strand"]]
     # print(ref_df.head(5))
     return ref_df
@@ -68,8 +86,6 @@ def label_candidates(candidate_df, reference_df, site_type, max_distance=50):
 
     return candidate_df
 
-
-def label_softclip_sequences(softclip_df, reference_df, site_type, max_distance=50):
     """
     Label individual soft-clipped sequences based on their candidate site positions.
     
@@ -426,13 +442,7 @@ def main(args, cfg):
                 tss_df = pd.read_csv(cfg.tss_labeled_file)
                 if 'label' in tss_df.columns:
                     selected_tss_features, tss_importance = perform_feature_selection(tss_df, cfg, 'TSS')
-                    
-                    # Filter and save TSS features with selected features only
-                    tss_filtered = tss_df[['chrom', 'position', 'strand'] + selected_tss_features + ['label']]
-                    # tss_filtered.to_csv(cfg.tss_feature_file.replace('.csv', '_selected.csv'), index=False)
-                    # print(f"Saved filtered TSS features to {cfg.tss_feature_file.replace('.csv', '_selected.csv')}")
-                
-            
+
             # Load labeled data and perform feature selection for TES
             if os.path.exists(cfg.tes_feature_file):
                 print("Performing feature selection for TES...")
@@ -440,59 +450,8 @@ def main(args, cfg):
                 if 'label' in tes_df.columns:
                     selected_tes_features, tes_importance = perform_feature_selection(tes_df, cfg, 'TES')
                     
-                    # Filter and save TES features with selected features only
-                    tes_filtered = tes_df[['chrom', 'position', 'strand'] + selected_tes_features + ['label']]
-                    # tes_filtered.to_csv(cfg.tes_labeled_file.replace('.csv', '_selected.csv'), index=False)
-                    # print(f"Saved filtered TES features to {cfg.tes_labeled_file.replace('.csv', '_selected.csv')}")
-        
-        # else:
-        #     # For testing, load previously selected features and filter
-        #     print("Loading previously selected features for testing...")
-            
-        #     # Filter TSS features using previously selected features
-        #     if os.path.exists(cfg.tss_labeled_file):
-        #         selected_tss_features = load_selected_features(cfg, 'TSS')
-        #         # print(f"Selected TSS features: {selected_tss_features}")
-        #         if selected_tss_features:
-        #             tss_df = pd.read_csv(cfg.tss_labeled_file)
-        #             available_features = [f for f in selected_tss_features if f in tss_df.columns]
-        #             tss_filtered = tss_df[['chrom', 'position', 'strand'] + available_features]
-        #             tss_filtered.to_csv(cfg.tss_labeled_file.replace('.csv', '_selected.csv'), index=False)
-        #             print(f"Filtered TSS features using {len(available_features)} selected features")
-            
-        #     # Filter TES features using previously selected features
-        #     if os.path.exists(cfg.tes_labeled_file):
-        #         selected_tes_features = load_selected_features(cfg, 'TES')
-        #         if selected_tes_features:
-        #             tes_df = pd.read_csv(cfg.tes_labeled_file)
-        #             available_features = [f for f in selected_tes_features if f in tes_df.columns]
-        #             tes_filtered = tes_df[['chrom', 'position', 'strand'] + available_features]
-        #             tes_filtered.to_csv(cfg.tes_labeled_file.replace('.csv', '_selected.csv'), index=False)
-        #             print(f"Filtered TES features using {len(available_features)} selected features")
-    
-    # Label soft-clipped sequences if they exist
-    # if hasattr(cfg, 'tss_softclip_file') and hasattr(cfg, 'tes_softclip_file'):
-    #     if os.path.exists(cfg.tss_softclip_file) and os.path.exists(cfg.tes_softclip_file):
-    #         # Load soft-clipped sequences
-    #         tss_softclip_df = pd.read_csv(cfg.tss_softclip_file, dtype={"chrom": str})
-    #         tes_softclip_df = pd.read_csv(cfg.tes_softclip_file, dtype={"chrom": str})
-            
-    #         # Label soft-clipped sequences
-    #         tss_softclip_labeled_df = label_softclip_sequences(tss_softclip_df, reference_df, "TSS", args.distance)
-    #         tes_softclip_labeled_df = label_softclip_sequences(tes_softclip_df, reference_df, "TES", args.distance)
-            
-    #         # Save labeled soft-clipped sequences
-    #         tss_softclip_labeled_df.to_csv(cfg.tss_softclip_labeled_file, index=False)
-    #         tes_softclip_labeled_df.to_csv(cfg.tes_softclip_labeled_file, index=False)
-    #         print(f"Labeled TSS soft-clipped sequences saved to: {cfg.tss_softclip_labeled_file}")
-    #         print(f"Labeled TES soft-clipped sequences saved to: {cfg.tes_softclip_labeled_file}")
-            
-    #         # Print summary statistics
-    #         print(f"\nSoft-clipped sequence labeling summary:")
-    #         print(f"TSS sequences: {len(tss_softclip_labeled_df)} total, {sum(tss_softclip_labeled_df['label'])} positive")
-    #         print(f"TES sequences: {len(tes_softclip_labeled_df)} total, {sum(tes_softclip_labeled_df['label'])} positive")
 
-
+       
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Label candidate TSS/TES sites based on reference.")
     parser.add_argument('-d', '--distance', type=int, default=50, help="Maximum distance allowed for matching.")

@@ -138,7 +138,7 @@ def evaluate_model(y_true, y_pred, y_prob, prdata_path, plot_path=None):
         "confusion_matrix": cm.tolist()
     }
 
-def load_model(model_type, config):
+def load_model(model_type, config, scale_pos_weight=None):
     if model_type == "xgboost":
         import xgboost as xgb
         xgb_model = xgb.XGBClassifier(
@@ -147,16 +147,24 @@ def load_model(model_type, config):
             learning_rate=config["learning_rate"],
             subsample=config["subsample"],
             colsample_bytree=config["colsample_bytree"],
-            reg_lambda=config["reg_lambda"],
-            reg_alpha=config["reg_alpha"],
+            n_jobs=4,  # Use all available CPU cores
+            # reg_lambda=config["reg_lambda"],
+            # reg_alpha=config["reg_alpha"],
             # base_score=config.get("base_score", 0.5),
             # use_label_encoder=False,
-            objective="binary:logistic"
-            # eval_metric="aucpr",
+            objective="binary:logistic",
+            # tree_method='hist',  # Faster training method
+            eval_metric="aucpr",
+            # Handle class imbalance
+            scale_pos_weight=scale_pos_weight or config.get("scale_pos_weight", 1.0),
+            # max_delta_step=config.get("max_delta_step", 1),  # Helps with extreme imbalance
+            # reg_alpha=config.get("reg_alpha", 0.1),
+            # reg_lambda=config.get("reg_lambda", 1.0)
             # reg_lambda=config["reg_lambda"]
+
         )
         return Pipeline([
-            ('scaler', StandardScaler()),
+            # ('scaler', StandardScaler()),
             ('clf', xgb_model)
         ])
     elif model_type == "randomforest":
@@ -164,19 +172,21 @@ def load_model(model_type, config):
             n_estimators=config["n_estimators"],
             max_depth=config["max_depth"],
             max_features=config["max_features"],
-            random_state=42
+            random_state=42,
+            n_jobs=8,
+            class_weight='balanced'
         )
         return Pipeline([
-            ('scaler', StandardScaler()),
+            # ('scaler', StandardScaler()),
             ('clf', rf_model)
         ])
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
 
 
-def load_saved_model(model_type, model_path, config):
+def load_saved_model(model_type, model_path, config, scale_pos_weight=None):
     if model_type == "xgboost":
-        model = load_model(model_type, config)
+        model = load_model(model_type, config, scale_pos_weight=scale_pos_weight)
         model.load_model(model_path)
         return model
     elif model_type == "randomforest":

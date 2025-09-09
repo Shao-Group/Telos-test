@@ -4,7 +4,7 @@ import pickle
 class Config:
     _instance = None
 
-    def __init__(self, bam_file, gtf_file, prefix, output_dir, rnaseqtools_dir, ref_anno_gtf, tmap_file):
+    def __init__(self, bam_file, gtf_file_all, gtf_file_filtered, prefix, output_dir, rnaseqtools_dir, ref_anno_gtf, tmap_file):
         # your existing defaults
         self.window_size = 300
         self.min_mapq = 10
@@ -32,7 +32,8 @@ class Config:
         self.output_dir      = output_dir
         self.rnaseqtools_dir = rnaseqtools_dir
         self.bam_file        = bam_file
-        self.gtf_file        = gtf_file
+        self.gtf_file_all        = gtf_file_all
+        self.gtf_file_filtered   = gtf_file_filtered
         self.ref_anno        = ref_anno_gtf
         self.tmap_file        = tmap_file
 
@@ -45,6 +46,7 @@ class Config:
 
         self.tss_selected_feature_file = None
         self.tes_selected_feature_file = None
+        self.is_training = False
 
         self._make_dirs()
 
@@ -95,10 +97,10 @@ class Config:
 
 
     @classmethod
-    def create(cls, bam_file, gtf_file, prefix, output_dir, rnaseqtools_dir, ref_anno_gtf, tmap_file):
+    def create(cls, bam_file, gtf_file_all, gtf_file_filtered, prefix, output_dir, rnaseqtools_dir, ref_anno_gtf, tmap_file):
         """Initialize singleton (only once)."""
         if cls._instance is None:
-            cls._instance = cls(bam_file, gtf_file, prefix, output_dir, rnaseqtools_dir, ref_anno_gtf, tmap_file)
+            cls._instance = cls(bam_file, gtf_file_all, gtf_file_filtered, prefix, output_dir, rnaseqtools_dir, ref_anno_gtf, tmap_file)
         return cls._instance
 
     @classmethod

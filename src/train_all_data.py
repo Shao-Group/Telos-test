@@ -14,14 +14,14 @@ MODEL_CONFIG_DIR = "project_config"
 GFFCOMPARE_ENV = "gffcompare"
 LOG_DIR = "logs"
 
-def train_data(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file):
+def train_data(prefix, rnaseq_dir, output_dir, bam_file, gtf_file_all, gtf_file_filtered, ref_anno_gtf, tmap_file):
     output_dir = os.path.join(output_dir, prefix)
     os.makedirs(output_dir, exist_ok=True)
     log_file = os.path.join(LOG_DIR, f"{prefix}.log")
     with open(log_file, "w") as log:
         log.write(f"====== Processing {prefix}... ========\n")
         print(f"Installing {prefix}...")
-        config_file_path = install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file)
+        config_file_path = install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file_all, gtf_file_filtered, ref_anno_gtf, tmap_file)
         print(f"Installation of {prefix} completed.")
 
         
@@ -90,7 +90,7 @@ def train_data(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf,
 
 def process_dataset_tools(row_data, rnaseq_dir, output_dir):
     """Process both tools for a single dataset in parallel"""
-    prefix, bam_file, gtf_file1, gtf_file2, tmap_file1, tmap_file2, ref = row_data
+    prefix, bam_file, gtf_file_all1, gtf_file_all2, gtf_file_filtered1, gtf_file_filtered2, tmap_file1, tmap_file2, ref = row_data
     
     print(f"Processing {prefix}...")
     prefix1 = prefix + "_stringtie"
@@ -98,8 +98,8 @@ def process_dataset_tools(row_data, rnaseq_dir, output_dir):
     
     # Create a list of tasks for this dataset
     tasks = [
-        (prefix1, rnaseq_dir, output_dir, bam_file, gtf_file1, ref, tmap_file1),
-        (prefix2, rnaseq_dir, output_dir, bam_file, gtf_file2, ref, tmap_file2)
+        (prefix1, rnaseq_dir, output_dir, bam_file, gtf_file_all1, gtf_file_filtered1, ref, tmap_file1),
+        (prefix2, rnaseq_dir, output_dir, bam_file, gtf_file_all2, gtf_file_filtered2, ref, tmap_file2)
     ]
     
     results = []
@@ -120,30 +120,42 @@ def init_parallel():
                      "data/SRR307903_hisat/hisat.sorted.bam",
                      "data/nanopore_cDNA_ENCFF023EXJ/ENCFF023EXJ.sorted.bam",
                      "data/nanopore_dRNA_NA12878/NA12878-DirectRNA.sorted.bam"],
-        "gtf_file1": ["data/nanopore_cDNA_NA12878/stringtie.gtf", 
-                      "data/nanopore_dRNA-ENCFF155CFF/stringtie.gtf",
-                      "data/pacbio_ENCFF450VAU/stringtie.gtf",
-                      "data/SRR307903_hisat/stringtie.gtf",
-                      "data/nanopore_cDNA_ENCFF023EXJ/stringtie.gtf",
-                      "data/nanopore_dRNA_NA12878/stringtie.gtf"],
-        "gtf_file2": ["data/nanopore_cDNA_NA12878/isoquant.gtf", 
-                      "data/nanopore_dRNA-ENCFF155CFF/isoquant.gtf",
-                      "data/pacbio_ENCFF450VAU/isoquant.gtf",
-                      "data/SRR307903_hisat/scallop2.gtf",
-                      "data/nanopore_cDNA_ENCFF023EXJ/isoquant.gtf",
-                      "data/nanopore_dRNA_NA12878/isoquant.gtf"],
-        "tmap_file1":  ["data/nanopore_cDNA_NA12878/stringtie.stringtie.gtf.tmap",
-                        "data/nanopore_dRNA-ENCFF155CFF/stringtie.stringtie.gtf.tmap",
-                       "data/pacbio_ENCFF450VAU/stringtie.stringtie.gtf.tmap",
-                       "data/SRR307903_hisat/stringtie.stringtie.gtf.tmap",
-                       "data/nanopore_cDNA_ENCFF023EXJ/stringtie.stringtie.gtf.tmap",
-                       "data/nanopore_dRNA_NA12878/stringtie.stringtie.gtf.tmap"],
-        "tmap_file2":  ["data/nanopore_cDNA_NA12878/isoquant.isoquant.gtf.tmap",
-                        "data/nanopore_dRNA-ENCFF155CFF/isoquant.isoquant.gtf.tmap",
-                       "data/pacbio_ENCFF450VAU/isoquant.isoquant.gtf.tmap",
-                       "data/SRR307903_hisat/scallop2.scallop2.gtf.tmap",
-                       "data/nanopore_cDNA_ENCFF023EXJ/isoquant.isoquant.gtf.tmap",
-                       "data/nanopore_dRNA_NA12878/isoquant.isoquant.gtf.tmap"],
+        "gtf_file_all1": ["data/nanopore_cDNA_NA12878/stringtie_all.gtf", 
+                      "data/nanopore_dRNA-ENCFF155CFF/stringtie_all.gtf",
+                      "data/pacbio_ENCFF450VAU/stringtie_all.gtf",
+                      "data/SRR307903_hisat/stringtie_all.gtf",
+                      "data/nanopore_cDNA_ENCFF023EXJ/stringtie_all.gtf",
+                      "data/nanopore_dRNA_NA12878/stringtie_all.gtf"],
+        "gtf_file_all2": ["data/nanopore_cDNA_NA12878/isoquant_all.gtf", 
+                      "data/nanopore_dRNA-ENCFF155CFF/isoquant_all.gtf",
+                      "data/pacbio_ENCFF450VAU/isoquant_all.gtf",
+                      "data/SRR307903_hisat/scallop2_all.gtf",
+                      "data/nanopore_cDNA_ENCFF023EXJ/isoquant_all.gtf",
+                      "data/nanopore_dRNA_NA12878/isoquant_all.gtf"],
+        "gtf_file_filtered1": ["data/nanopore_cDNA_NA12878/stringtie_filtered.gtf", 
+                      "data/nanopore_dRNA-ENCFF155CFF/stringtie_filtered.gtf",
+                      "data/pacbio_ENCFF450VAU/stringtie_filtered.gtf",
+                      "data/SRR307903_hisat/stringtie_filtered.gtf",
+                      "data/nanopore_cDNA_ENCFF023EXJ/stringtie_filtered.gtf",
+                      "data/nanopore_dRNA_NA12878/stringtie_filtered.gtf"],
+        "gtf_file_filtered2": ["data/nanopore_cDNA_NA12878/isoquant_filtered.gtf", 
+                      "data/nanopore_dRNA-ENCFF155CFF/isoquant_filtered.gtf",
+                      "data/pacbio_ENCFF450VAU/isoquant_filtered.gtf",
+                      "data/SRR307903_hisat/scallop2_filtered.gtf",
+                      "data/nanopore_cDNA_ENCFF023EXJ/isoquant_filtered.gtf",
+                      "data/nanopore_dRNA_NA12878/isoquant_filtered.gtf"],
+        "tmap_file1":  ["data/nanopore_cDNA_NA12878/stringtie.stringtie_all.gtf.tmap",
+                        "data/nanopore_dRNA-ENCFF155CFF/stringtie.stringtie_all.gtf.tmap",
+                       "data/pacbio_ENCFF450VAU/stringtie.stringtie_all.gtf.tmap",
+                       "data/SRR307903_hisat/stringtie.stringtie_all.gtf.tmap",
+                       "data/nanopore_cDNA_ENCFF023EXJ/stringtie.stringtie_all.gtf.tmap",
+                       "data/nanopore_dRNA_NA12878/stringtie.stringtie_all.gtf.tmap"],
+        "tmap_file2":  ["data/nanopore_cDNA_NA12878/isoquant.isoquant_all.gtf.tmap",
+                        "data/nanopore_dRNA-ENCFF155CFF/isoquant.isoquant_all.gtf.tmap",
+                       "data/pacbio_ENCFF450VAU/isoquant.isoquant_all.gtf.tmap",
+                       "data/SRR307903_hisat/scallop2.scallop2_all.gtf.tmap",
+                       "data/nanopore_cDNA_ENCFF023EXJ/isoquant.isoquant_all.gtf.tmap",
+                       "data/nanopore_dRNA_NA12878/isoquant.isoquant_all.gtf.tmap"],
         "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF, GENCODE_REF, GENCODE_REF]
     }
     
@@ -152,8 +164,8 @@ def init_parallel():
     # Prepare data for parallel processing
     dataset_tasks = []
     for index, row in train_configs_df.iterrows():
-        row_data = (row["prefix"], row["bam_file"], row["gtf_file1"], 
-                   row["gtf_file2"], row["tmap_file1"], row["tmap_file2"], 
+        row_data = (row["prefix"], row["bam_file"], row["gtf_file_all1"], 
+                   row["gtf_file_all2"], row["gtf_file_filtered1"], row["gtf_file_filtered2"], row["tmap_file1"], row["tmap_file2"], 
                    row["ref_anno_gtf"])
         dataset_tasks.append(row_data)
     
