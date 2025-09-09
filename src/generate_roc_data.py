@@ -57,11 +57,11 @@ class ROCPipeline:
 
         logging.info(f"[{model}] update-cov")
         self._run(
-            ["./gtfformat", "update-transcript-cov", str(self.baseline_gtf_all_train), str(pred_file_train), str(out_file_train)],
+            ["./gtfformat", "update-transcript-cov", str(self.baseline_gtf_train), str(pred_file_train), str(out_file_train)],
             cwd=self.gtfformat_home
         )
         self._run(
-            ["./gtfformat", "update-transcript-cov", str(self.baseline_gtf_all_val), str(pred_file_val), str(out_file_val)],
+            ["./gtfformat", "update-transcript-cov", str(self.baseline_gtf_val), str(pred_file_val), str(out_file_val)],
             cwd=self.gtfformat_home
         )
         return out_file_train, out_file_val
@@ -146,11 +146,11 @@ class ROCPipeline:
         logging.info("[baseline] processing original GTFs")
         label_train = "baseline_train"
         label_val = "baseline_val"
-        self.run_gffcompare(self.baseline_gtf_filtered_train, label_train, cwd=self.cfg.gffcompare_dir_train, is_train=True)
-        self.run_gffcompare(self.baseline_gtf_filtered_val, label_val, cwd=self.cfg.gffcompare_dir_val, is_train=False)
+        self.run_gffcompare(self.baseline_gtf_train, label_train, cwd=self.cfg.gffcompare_dir_train, is_train=True)
+        self.run_gffcompare(self.baseline_gtf_val, label_val, cwd=self.cfg.gffcompare_dir_val, is_train=False)
        
-        tmap_train = Path(self.cfg.data_output_dir) / f"{label_train}.{label_train}_filtered-chrom.gtf.tmap"
-        tmap_val = Path(self.cfg.data_output_dir) / f"{label_val}.{label_val}_filtered-chrom.gtf.tmap"
+        tmap_train = Path(self.cfg.data_output_dir) / f"{label_train}.{label_train}-chrom.gtf.tmap"
+        tmap_val = Path(self.cfg.data_output_dir) / f"{label_val}.{label_val}-chrom.gtf.tmap"
         roc_out_file_train = Path(self.cfg.transcript_pr_data) / f"{label_train}.roc"
         roc_out_file_val = Path(self.cfg.transcript_pr_data) / f"{label_val}.roc"
         
@@ -178,20 +178,11 @@ class ROCPipeline:
         """Filter the baseline GTFs with validation chromosomes."""
         logging.info("[baseline] filtering original GTFs")
         
-        input_gtf_filtered = Path(self.cfg.gtf_file_filtered).absolute()
-        input_gtf_all = Path(self.cfg.gtf_file_all).absolute()
-
-        self.baseline_gtf_all_train = Path(self.cfg.data_output_dir) / f"baseline_train_all-chrom.gtf"
-        self.baseline_gtf_all_val = Path(self.cfg.data_output_dir) / f"baseline_val_all-chrom.gtf"
-        self.baseline_gtf_all_train = self.baseline_gtf_all_train.absolute()
-        self.baseline_gtf_all_val = self.baseline_gtf_all_val.absolute()
-
-
-        self.baseline_gtf_filtered_train = Path(self.cfg.data_output_dir) / f"baseline_train_filtered-chrom.gtf"
-        self.baseline_gtf_filtered_val = Path(self.cfg.data_output_dir) / f"baseline_val_filtered-chrom.gtf"
-        self.baseline_gtf_filtered_train = self.baseline_gtf_filtered_train.absolute()
-        self.baseline_gtf_filtered_val = self.baseline_gtf_filtered_val.absolute()
-
+        input_gtf = Path(self.cfg.gtf_file).absolute()
+        self.baseline_gtf_train = Path(self.cfg.data_output_dir) / f"baseline_train-chrom.gtf"
+        self.baseline_gtf_val = Path(self.cfg.data_output_dir) / f"baseline_val-chrom.gtf"
+        self.baseline_gtf_train = self.baseline_gtf_train.absolute()
+        self.baseline_gtf_val = self.baseline_gtf_val.absolute()
         val_chromosome_file = Path(self.cfg.validation_chromosomes_file).absolute()
         train_chromosome_file = Path(self.cfg.train_chromosomes_file).absolute()
 
@@ -201,29 +192,17 @@ class ROCPipeline:
         self.ref_anno_val = self.ref_anno_val.absolute()
 
         self._run(
-            ["./gtfformat", "filter-chrom", str(input_gtf_filtered), str(train_chromosome_file), str(self.baseline_gtf_filtered_train)],
+            ["./gtfformat", "filter-chrom", str(input_gtf), str(train_chromosome_file), str(self.baseline_gtf_train)],
             cwd=self.gtfformat_home
         )
         self._run(
-            ["./gtfformat", "filter-chrom", str(input_gtf_filtered), str(val_chromosome_file), str(self.baseline_gtf_filtered_val)],
+            ["./gtfformat", "filter-chrom", str(input_gtf), str(val_chromosome_file), str(self.baseline_gtf_val)],
             cwd=self.gtfformat_home
         )
-
-
-        self._run(
-            ["./gtfformat", "filter-chrom", str(input_gtf_all), str(train_chromosome_file), str(self.baseline_gtf_all_train)],
-            cwd=self.gtfformat_home
-        )
-        self._run(
-            ["./gtfformat", "filter-chrom", str(input_gtf_all), str(val_chromosome_file), str(self.baseline_gtf_all_val)],
-            cwd=self.gtfformat_home
-        )
-
         self._run(
             ["./gtfformat", "filter-chrom", str(Path(self.cfg.ref_anno).absolute()), str(train_chromosome_file), str(self.ref_anno_train)],
             cwd=self.gtfformat_home
         )
-
         self._run(
             ["./gtfformat", "filter-chrom", str(Path(self.cfg.ref_anno).absolute()), str(val_chromosome_file), str(self.ref_anno_val)],
             cwd=self.gtfformat_home

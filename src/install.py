@@ -3,7 +3,7 @@ import os
 from config import create_config, reset_config, save_config
 
 
-def install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file_all, gtf_file_filtered, ref_anno_gtf, tmap_file):
+def install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file):
     """
     Install the package.
     """
@@ -18,10 +18,8 @@ def install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file_all, gtf_file_fil
     
     if not os.path.exists(bam_file):
         raise ValueError(f"BAM file {bam_file} does not exist.")
-    if not os.path.exists(gtf_file_all):
-        raise ValueError(f"GTF file {gtf_file_all} does not exist.")
-    if not os.path.exists(gtf_file_filtered):
-        raise ValueError(f"GTF file {gtf_file_filtered} does not exist.")
+    if not os.path.exists(gtf_file):
+        raise ValueError(f"GTF file {gtf_file} does not exist.")
     
     reset_config()  # Reset the configuration to ensure a clean state
     create_config(
@@ -30,8 +28,7 @@ def install(prefix, rnaseq_dir, output_dir, bam_file, gtf_file_all, gtf_file_fil
         output_dir=output_dir,
         rnaseqtools_dir=rnaseq_dir,
         ref_anno_gtf=ref_anno_gtf,
-        gtf_file_all=gtf_file_all,
-        gtf_file_filtered=gtf_file_filtered,
+        gtf_file=gtf_file,
         tmap_file=tmap_file
     )
     print("Configuration created.")
@@ -65,13 +62,7 @@ if __name__ == "__main__":
         help="Path to the input BAM file."
     )
     parser.add_argument(
-        "--file-gtf-all",
-        type=str,
-        required=True,
-        help="Path to the input GTF file."
-    )
-    parser.add_argument(
-        "--file-gtf-filtered",
+        "--file-gtf",
         type=str,
         required=True,
         help="Path to the input GTF file."
@@ -101,8 +92,7 @@ if __name__ == "__main__":
         rnaseq_dir=args.dir_rnaseq,
         output_dir=args.dir_output,
         bam_file=args.file_bam,
-        gtf_file_all=args.file_gtf_all,
-        gtf_file_filtered=args.file_gtf_filtered,
+        gtf_file=args.file_gtf,
         ref_anno_gtf=args.ref_anno_gtf,
         tmap_file=args.tmap_file
     )

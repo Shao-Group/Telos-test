@@ -37,13 +37,12 @@ colors = {
     "assembler2_randomforest": "#ff0000" # red
 }
 
-STAGE1_PR_PLOT_FOLDER = "plots_randsampling/"
+STAGE1_PR_PLOT_FOLDER = "plots/"
 
 # ———————
 
 # create a 4×2 grid: 4 datasets × 2 site-types
-def plot_pr(config_folder, is_train):
-    suffix = "train" if is_train else "val"
+def plot_pr(config_folder):
     site_types = ['tss', 'tes']
     fig, axes = plt.subplots(
         nrows=len(data_names),
@@ -71,7 +70,7 @@ def plot_pr(config_folder, is_train):
             tools[1] : load_config(os.path.join(config_folder, f"{name}_{tools[1]}_config.pkl"))
         }
         for j, site in enumerate(site_types):
-            print(f"Plotting {name} {site} {i} {j}")
+            # print(f"Plotting {name} {site} {i} {j}")
             ax = axes[i, j]
             
             pr_files  = {
@@ -81,13 +80,12 @@ def plot_pr(config_folder, is_train):
             
             
             for tool, files in pr_files.items():
-                files = [f for f in files if f.endswith(f"{suffix}_pr_data.csv")]
                 for fname in files:
-                    assert fname.endswith(f"{suffix}_pr_data.csv")
+                    assert fname.endswith("_pr_data.csv")
                     if site not in fname:
                         continue
 
-                    site_model = fname.replace(f"_{suffix}_pr_data.csv", "")
+                    site_model = fname.replace("_pr_data.csv", "")
                     # if  "randomforest" in site_model :
                     #     continue
                     pr_df = pd.read_csv(os.path.join(configs[tool].pr_data_dir, fname))
@@ -239,18 +237,17 @@ def plot_pr(config_folder, is_train):
     plt.tight_layout()
     # Adjust layout to make room for legend
     plt.subplots_adjust(top=0.89)
-    plt.savefig(os.path.join(STAGE1_PR_PLOT_FOLDER,f"all_pr_curves_grid_{suffix}.pdf"), dpi=300, format="pdf", bbox_inches="tight")
+    plt.savefig(os.path.join(STAGE1_PR_PLOT_FOLDER,"all_pr_curves_grid.pdf"), dpi=300, format="pdf", bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved: {STAGE1_PR_PLOT_FOLDER}/all_pr_curves_grid_{suffix}.pdf")
+    print(f"Saved: {STAGE1_PR_PLOT_FOLDER}/all_pr_curves_grid.pdf")
 
 
 def main():
     os.makedirs(STAGE1_PR_PLOT_FOLDER, exist_ok=True)
     parser = ArgumentParser()
     parser.add_argument('--config_folder', required=True, help='Path to the configuration file')
-    parser.add_argument('--is_train', action='store_true', help='Is training chromosomes')
     args = parser.parse_args()
-    plot_pr(args.config_folder, args.is_train)
+    plot_pr(args.config_folder)
 
 if __name__ == "__main__":
     main()

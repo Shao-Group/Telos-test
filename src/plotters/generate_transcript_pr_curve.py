@@ -14,7 +14,7 @@ import numpy as np
 from config import Config, load_config
 from argparse import ArgumentParser
 
-TRANSCRIPT_PLOT_FOLDER = "plots_randsampling/transcript_pr_curves"
+TRANSCRIPT_PLOT_FOLDER = "plots/transcript_pr_curves_compare"
 
 def plot_pr_curves_on_subplot(config: Config, ax, title_prefix="", is_train=False):
     """
@@ -107,8 +107,7 @@ def main():
         plot_pr_curves_on_subplot(test_config2, axes[1, 1], "Testing Dataset", args.is_train)
         
         plt.tight_layout()
-        train_type = "train_samples" if args.is_train else "test_samples"
-        plt.savefig(f'{TRANSCRIPT_PLOT_FOLDER}/{train_type}/pr_curves_compare_{train_p}_vs_{test_p}{"-train" if args.is_train else "-test"}.pdf', format='pdf', dpi=300, bbox_inches='tight')
+        plt.savefig(f'{TRANSCRIPT_PLOT_FOLDER}/pr_curves_compare_{train_p}_vs_{test_p}{"-train" if args.is_train else "-test"}.pdf', format='pdf', dpi=300, bbox_inches='tight')
         plt.close()  # Close the figure to free memory
         
         print(f"Finished plotting PR curve comparison for {train_p} (train) vs {test_p} (test)")
