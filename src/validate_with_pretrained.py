@@ -175,7 +175,7 @@ def validate_stage1(df, model_type, model_config, project_config, pretrained_mod
     print(f"Metrics saved to {metrics_file}")
 
     if model_type == "randomforest":
-        importances = model.feature_importances_
+        importances = model.named_steps['clf'].feature_importances_
         sorted_idx = np.argsort(importances)[::-1]
         sorted_feats = np.array(numeric_cols)[sorted_idx]
         sorted_vals = importances[sorted_idx]
@@ -220,7 +220,7 @@ def main():
     df_tss = pd.read_csv(project_config.tss_labeled_file, dtype={"chrom": str})
     print(f"df_tss.columns: {df_tss.columns}")
         
-    with open(os.path.join(args.model_config_folder, f"tss_{args.model_type}_config.yaml")) as f:
+    with open(os.path.join(args.model_config_folder, f"{args.model_type}_config.yaml")) as f:
         model_config = yaml.safe_load(f)
 
     metrics, model, df_tss_pred = validate_stage1(df_tss, args.model_type, model_config, project_config, args.pretrained_tss_model, "tss")
@@ -231,7 +231,7 @@ def main():
     df_tes = pd.read_csv(project_config.tes_labeled_file, dtype={"chrom": str})
     print(f"df_tes.columns: {df_tes.columns}")
         
-    with open(os.path.join(args.model_config_folder, f"tes_{args.model_type}_config.yaml")) as f:
+    with open(os.path.join(args.model_config_folder, f"{args.model_type}_config.yaml")) as f:
         model_config = yaml.safe_load(f)
 
     metrics, model, df_tes_pred = validate_stage1(df_tes, args.model_type, model_config, project_config, args.pretrained_tes_model, "tes")

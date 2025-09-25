@@ -63,18 +63,24 @@ def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
     print(f"Key features:")
     for f in features:
         print(f)
+    
+    # print class distribution
+    print(f"Train Class distribution: {np.bincount(y_train)}")
+    print(f"Test Class distribution: {np.bincount(y_test)}")
         
     # MINIMAL MODIFICATION: Optimize hyperparameters for transcript prediction
     clf_xgb = XGBClassifier(
-            n_estimators=200,  # More trees
+            n_estimators=300,  # More trees
             max_depth=8,       # Deeper for interactions
             learning_rate=0.1, # Lower learning rate
             subsample=0.8,
             colsample_bytree=0.8,
             objective='binary:logistic',
             random_state=42,
-            reg_lambda = 3,
-            reg_alpha = 0.5
+            eval_metric='aucpr',
+            n_jobs=8
+            # reg_lambda = 3,
+            # reg_alpha = 0.5
             # eval_metric='aucpr'
             # scale_pos_weight=len(y_train[y_train==0]) / max(len(y_train[y_train==1]), 1)  # Handle imbalance
         )
@@ -199,7 +205,7 @@ def train_and_evaluate_stage1(df, model_type, model_config, project_config, site
     print(f"Metrics saved to {metrics_file}")
 
     if model_type == "randomforest":
-        importances = model.feature_importances_
+        importances = model.named_steps['clf'].feature_importances_
         sorted_idx = np.argsort(importances)[::-1]
         sorted_feats = np.array(numeric_cols)[sorted_idx]
         sorted_vals = importances[sorted_idx]

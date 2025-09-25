@@ -147,16 +147,17 @@ def load_model(model_type, config):
             learning_rate=config["learning_rate"],
             subsample=config["subsample"],
             colsample_bytree=config["colsample_bytree"],
-            reg_lambda=config["reg_lambda"],
-            reg_alpha=config["reg_alpha"],
+            # reg_lambda=config["reg_lambda"],
+            # reg_alpha=config["reg_alpha"],
             # base_score=config.get("base_score", 0.5),
             # use_label_encoder=False,
-            objective="binary:logistic"
+            objective="binary:logistic",
+            n_jobs=8
             # eval_metric="aucpr",
             # reg_lambda=config["reg_lambda"]
         )
         return Pipeline([
-            ('scaler', StandardScaler()),
+            # ('scaler', StandardScaler()),
             ('clf', xgb_model)
         ])
     elif model_type == "randomforest":
@@ -164,10 +165,11 @@ def load_model(model_type, config):
             n_estimators=config["n_estimators"],
             max_depth=config["max_depth"],
             max_features=config["max_features"],
-            random_state=42
+            random_state=42,
+            n_jobs=8
         )
         return Pipeline([
-            ('scaler', StandardScaler()),
+            # ('scaler', StandardScaler()),
             ('clf', rf_model)
         ])
     else:

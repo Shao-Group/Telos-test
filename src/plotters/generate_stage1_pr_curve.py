@@ -15,13 +15,48 @@ from config import load_config, Config
 
 # —— USER SETTINGS ——
 data_names = [
-    "cDNA-NA12878","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903"
+    # "cDNA-NA12878","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903"
+        "cDNA-K562",
+        "cDNA-ENCFF263YFG", 
+        "cDNA-NA12878", 
+        "dRNA-Hek293T", 
+        "dRNA-ENCFF771DIX",
+        "dRNA-NA12878",
+        "pacbio_ENCFF694DIE",
+        "pacbio_ENCFF563QZR",
+        "pacbio_ENCFF370NFS",
+        "SRR307911",
+        "SRR545695",
+        "SRR315334",
+        "SRR534307",
+        "SRR545723",
+        "SRR307911",
+        "SRR315323",
+        "SRR534319",
+        "SRR534291",
+        "SRR387661"
 ]
 name_dict = {
+    "cDNA-K562" : "K562 cDNA",
+    "cDNA-ENCFF263YFG" : "ENCFF263YFG cDNA",
     "cDNA-NA12878" : "NA12878 cDNA",
-    "dRNA-ENCFF155CFF" : "ENCFF155CFF dRNA",
-    "pacbio_ENCFF450VAU": "ENCFF450VAU",
-    "SRR307903" : "SRR307903"
+    "dRNA-Hek293T" : "Hek293T dRNA",
+    "dRNA-ENCFF771DIX" : "ENCFF771DIX dRNA",
+    "dRNA-NA12878" : "NA12878 dRNA",
+    "pacbio_ENCFF694DIE" : "ENCFF694DIE pacbio",
+    "pacbio_ENCFF563QZR" : "ENCFF563QZR pacbio",
+    "pacbio_ENCFF370NFS" : "ENCFF370NFS pacbio",
+    # "pacbio_ENCFF212HLP" : "ENCFF212HLP pacbio",
+    "SRR307911" : "SRR307911",
+    "SRR545695" : "SRR545695",
+    "SRR315334" : "SRR315334",
+    "SRR534307" : "SRR534307",
+    "SRR545723" : "SRR545723",
+    "SRR307911" : "SRR307911",
+    "SRR315323" : "SRR315323",
+    "SRR534319" : "SRR534319",
+    "SRR534291" : "SRR534291",
+    "SRR387661" : "SRR387661"
 }
 
 # Define colors for different curve types
@@ -37,27 +72,21 @@ colors = {
     "assembler2_randomforest": "#ff0000" # red
 }
 
-STAGE1_PR_PLOT_FOLDER = "plots/"
+STAGE1_PR_PLOT_FOLDER = "plots_individual/stage1_pr_curves/"
 
 # ———————
 
-# create a 4×2 grid: 4 datasets × 2 site-types
-def plot_pr(config_folder):
+def plot_pr(config_folder, is_train):
     site_types = ['tss', 'tes']
-    fig, axes = plt.subplots(
-        nrows=len(data_names),
-        ncols=2,
-        figsize=(12, 3 * len(data_names)),
-        sharex=False,
-        sharey=False
-    )
-    
-    # Track legend elements
-    legend_elements = []
-    legend_labels_set = set()  # To avoid duplicates
-    legend_labels = []
+    tss_folder = os.path.join(STAGE1_PR_PLOT_FOLDER, "tss")
+    tes_folder = os.path.join(STAGE1_PR_PLOT_FOLDER, "tes")
+    os.makedirs(tss_folder, exist_ok=True)
+    os.makedirs(tes_folder, exist_ok=True)
+    suffix = "train" if is_train else "val"
 
     for i, name in enumerate(data_names):
+        if "ENCFF563QZR" not in name:
+            continue
         tools =  ["stringtie", "scallop2"] if name.startswith("SRR") else ["stringtie", "isoquant"]
         tool_map = {
             "stringtie" : "assembler1",
@@ -70,22 +99,26 @@ def plot_pr(config_folder):
             tools[1] : load_config(os.path.join(config_folder, f"{name}_{tools[1]}_config.pkl"))
         }
         for j, site in enumerate(site_types):
-            # print(f"Plotting {name} {site} {i} {j}")
-            ax = axes[i, j]
+            fig, ax = plt.subplots(1, 1, figsize=(8, 8))
             
             pr_files  = {
                 tools[0] : os.listdir(configs[tools[0]].pr_data_dir), 
                 tools[1] : os.listdir(configs[tools[1]].pr_data_dir)
             }
             
-            
+            # print(pr_files)
             for tool, files in pr_files.items():
                 for fname in files:
-                    assert fname.endswith("_pr_data.csv")
+                    # if not fname.endswith(f"_{suffix}_pr_data.csv"):
+                    #     continue
+                    # assert fname.endswith(f"_{suffix}_pr_data.csv")
+                    print(tool + " " + fname)
+                    if "isoquant" not in tool:
+                        continue
                     if site not in fname:
                         continue
 
-                    site_model = fname.replace("_pr_data.csv", "")
+                    # site_model = fname.replace(f"_{suffix}_pr_data.csv", "")
                     # if  "randomforest" in site_model :
                     #     continue
                     pr_df = pd.read_csv(os.path.join(configs[tool].pr_data_dir, fname))
@@ -94,6 +127,9 @@ def plot_pr(config_folder):
                     label = f"{tool.title()} {model_type.title()}"
                     color_key = f"{tool_map[tool]}_{model_type}"
                     color = colors.get(color_key, colors.get(tool, "#333333"))
+
+                    # print(f"Plotting {label} with color {color}")
+                    # print(f"PR data: {pr_df.head(3)}")
                     
                     # full PR curve
                     line = ax.plot(
@@ -103,13 +139,6 @@ def plot_pr(config_folder):
                         color=color,
                         linewidth=2
                     )[0]
-                    
-                    # Add to legend if not already present
-                    # legend_label = f"{tool_map[tool]}"
-                    if color_key not in legend_labels_set:
-                        legend_elements.append(line)
-                        legend_labels_set.add(color_key)
-                        legend_labels.append(color_key.replace("_", " ").title())
 
                 # baseline: coverage-based PR curve
                 labeled_data_file = configs[tool].tss_labeled_file if site == "tss" else configs[tool].tes_labeled_file
@@ -117,14 +146,14 @@ def plot_pr(config_folder):
                 # print(f"Number of original points: {len(baseline_df)} for {tool} {site}")
 
                 # print([c for c in baseline_df.columns])
-                df_cov = pd.read_csv(configs[tool].cov_file, sep="\t")
+                df_cov = pd.read_csv(configs[tool].cov_file, sep="\t", dtype={"tss_chrom": str, "tes_chrom": str})
                 # print(f"Coverage file shape: {df_cov.shape}")
 
                 df_cov = df_cov[[f"{site}_chrom", f"{site}_pos", "coverage"]]
                 
                 # Check for duplicates in coverage file
                 n_unique_positions = df_cov[[f"{site}_chrom", f"{site}_pos"]].drop_duplicates().shape[0]
-                # print(f"Unique positions in coverage file: {n_unique_positions}, Total rows: {len(df_cov)} for {tool} {site}")
+                print(f"Unique positions in coverage file: {n_unique_positions}, Total rows: {len(df_cov)} for {tool} {site}")
                 
                 if len(df_cov) > n_unique_positions:
                     # print(f"WARNING: Coverage file has duplicates! Averaging coverage values...")
@@ -149,6 +178,10 @@ def plot_pr(config_folder):
                 recalls = []
                 n_total = len(baseline_filtered)
                 n_positive = baseline_filtered['label'].sum()
+
+                # print(f"Baseline columns: {baseline_filtered.columns}")
+                print(baseline_filtered[['chrom', 'position', f'{site}_chrom', f'{site}_pos', 'coverage', 'label']].head(50))
+                print(baseline_filtered[['chrom', 'position', f'{site}_chrom', f'{site}_pos', 'coverage', 'label']].tail(50))
                 
                 for k in range(1, n_total + 1):
                     # Keep top i highest coverage points
@@ -189,65 +222,28 @@ def plot_pr(config_folder):
                     alpha=0.5
                 )
                 
-                # Add to legend if not already present
-                if baseline_label not in legend_labels:
-                    legend_elements.append(baseline_line)
-                    legend_labels_set.add(baseline_label)
-                    legend_labels.append(baseline_label)
-
             # formatting per‐subplot
-            ax.set_title(f"{name_dict[name]} - {site.upper()}", fontsize=12)
-            if i == len(data_names) - 1:
-                ax.set_xlabel("Recall", fontsize=10)
-            if j == 0:
-                ax.set_ylabel("Precision", fontsize=10)
-            # ax.tick_params(labelsize= nine)  # increase tick labels if you wish
-            # Remove individual subplot legends
-            if ax.get_legend():
-                ax.legend().remove()
+            ax.set_title(f"{name_dict.get(name, name)} - {site.upper()}", fontsize=12)
+            ax.set_xlabel("Recall", fontsize=10)
+            ax.set_ylabel("Precision", fontsize=10)
 
-    # legend_labels = list(set(legend_labels))
+            ax.legend(loc='lower left', fontsize=9, frameon=True)
 
-    # Create a single legend at the top of the figure
-    if legend_elements:
-        fig.legend(
-            legend_elements, 
-            # [element.get_label() for element in legend_elements],
-            legend_labels,
-            loc='upper center',
-            bbox_to_anchor=(0.5, 0.98),  # Position at top center
-            ncol=min(len(legend_elements), 3),  # Max 4 columns
-            fontsize=12,
-            frameon=True,
-            fancybox=True,
-            shadow=True
-        )
-    
-    # Alternative: Manual legend with custom elements (uncomment if needed)
-    # manual_legend_elements = [
-    #     mlines.Line2D([0], [0], color='#1f77b4', linewidth=2, label='Stringtie Logistic'),
-    #     mlines.Line2D([0], [0], color='#1f77b4', linewidth=2, linestyle='--', label='Stringtie Baseline'),
-    #     mlines.Line2D([0], [0], color='#ff7f0e', linewidth=2, label='Scallop2 Logistic'),
-    #     mlines.Line2D([0], [0], color='#ff7f0e', linewidth=2, linestyle='--', label='Scallop2 Baseline'),
-    #     mlines.Line2D([0], [0], color='#2ca02c', linewidth=2, label='Isoquant Logistic'),
-    #     mlines.Line2D([0], [0], color='#2ca02c', linewidth=2, linestyle='--', label='Isoquant Baseline'),
-    # ]
-    # fig.legend(handles=manual_legend_elements, loc='upper center', bbox_to_anchor=(0.5, 0.98), ncol=3, fontsize=10)
-        
-    plt.tight_layout()
-    # Adjust layout to make room for legend
-    plt.subplots_adjust(top=0.89)
-    plt.savefig(os.path.join(STAGE1_PR_PLOT_FOLDER,"all_pr_curves_grid.pdf"), dpi=300, format="pdf", bbox_inches="tight")
-    plt.close(fig)
-    print(f"Saved: {STAGE1_PR_PLOT_FOLDER}/all_pr_curves_grid.pdf")
+            plt.tight_layout()
+            out_name = f"stage1_pr_{name}_{suffix}.pdf"
+            out_path = os.path.join(tss_folder if site == "tss" else tes_folder, out_name)
+            plt.savefig(out_path, dpi=300, format="pdf", bbox_inches="tight")
+            plt.close(fig)
+            print(f"Saved: {out_path}")
 
 
 def main():
     os.makedirs(STAGE1_PR_PLOT_FOLDER, exist_ok=True)
     parser = ArgumentParser()
     parser.add_argument('--config_folder', required=True, help='Path to the configuration file')
+    parser.add_argument('--is_train', action='store_true', help='Is training chromosomes')
     args = parser.parse_args()
-    plot_pr(args.config_folder)
+    plot_pr(args.config_folder, args.is_train)
 
 if __name__ == "__main__":
     main()

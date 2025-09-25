@@ -12,3 +12,6 @@ old_src/
 *output*/
 plots/
 project_config/*pkl
+comp_analysis/
+plots_individual/
+src/comparative_analysis.py

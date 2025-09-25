@@ -113,38 +113,43 @@ def init_parallel():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     train_configs = {
         # "prefix": ["cDNA-NA12878","dRNA-NA12878", "pacbio_ENCFF450VAU", "SRR307903"],
-        "prefix" : ["cDNA-NA12878","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903", "cDNA-ENCFF023EXJ", "dRNA-NA12878"],
-        "bam_file": ["data/nanopore_cDNA_NA12878/NA12878-cDNA.sorted.bam",
+        # "prefix" : ["cDNA-NA12878","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903", "cDNA-ENCFF023EXJ", "dRNA-NA12878"],
+        "prefix" : ["cDNA-ENCFF023EXJ","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903"],
+        "bam_file": [
+                     "data/nanopore_cDNA_ENCFF023EXJ/ENCFF023EXJ.sorted.bam",
                      "data/nanopore_dRNA-ENCFF155CFF/dRNA-ENCFF155CFF.sorted.bam",
                      "data/pacbio_ENCFF450VAU/ENCFF450VAU.sorted.bam",
-                     "data/SRR307903_hisat/hisat.sorted.bam",
-                     "data/nanopore_cDNA_ENCFF023EXJ/ENCFF023EXJ.sorted.bam",
-                     "data/nanopore_dRNA_NA12878/NA12878-DirectRNA.sorted.bam"],
-        "gtf_file1": ["data/nanopore_cDNA_NA12878/stringtie.gtf", 
-                      "data/nanopore_dRNA-ENCFF155CFF/stringtie.gtf",
-                      "data/pacbio_ENCFF450VAU/stringtie.gtf",
-                      "data/SRR307903_hisat/stringtie.gtf",
-                      "data/nanopore_cDNA_ENCFF023EXJ/stringtie.gtf",
-                      "data/nanopore_dRNA_NA12878/stringtie.gtf"],
-        "gtf_file2": ["data/nanopore_cDNA_NA12878/isoquant.gtf", 
-                      "data/nanopore_dRNA-ENCFF155CFF/isoquant.gtf",
-                      "data/pacbio_ENCFF450VAU/isoquant.gtf",
-                      "data/SRR307903_hisat/scallop2.gtf",
-                      "data/nanopore_cDNA_ENCFF023EXJ/isoquant.gtf",
-                      "data/nanopore_dRNA_NA12878/isoquant.gtf"],
-        "tmap_file1":  ["data/nanopore_cDNA_NA12878/stringtie.stringtie.gtf.tmap",
-                        "data/nanopore_dRNA-ENCFF155CFF/stringtie.stringtie.gtf.tmap",
-                       "data/pacbio_ENCFF450VAU/stringtie.stringtie.gtf.tmap",
-                       "data/SRR307903_hisat/stringtie.stringtie.gtf.tmap",
-                       "data/nanopore_cDNA_ENCFF023EXJ/stringtie.stringtie.gtf.tmap",
-                       "data/nanopore_dRNA_NA12878/stringtie.stringtie.gtf.tmap"],
-        "tmap_file2":  ["data/nanopore_cDNA_NA12878/isoquant.isoquant.gtf.tmap",
-                        "data/nanopore_dRNA-ENCFF155CFF/isoquant.isoquant.gtf.tmap",
-                       "data/pacbio_ENCFF450VAU/isoquant.isoquant.gtf.tmap",
-                       "data/SRR307903_hisat/scallop2.scallop2.gtf.tmap",
-                       "data/nanopore_cDNA_ENCFF023EXJ/isoquant.isoquant.gtf.tmap",
-                       "data/nanopore_dRNA_NA12878/isoquant.isoquant.gtf.tmap"],
-        "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF, GENCODE_REF, GENCODE_REF]
+                     "data/SRR307903_hisat/hisat.sorted.bam"
+                    ],
+                    #  "data/nanopore_cDNA_ENCFF023EXJ/ENCFF023EXJ.sorted.bam",
+                    #  "data/nanopore_dRNA_NA12878/NA12878-DirectRNA.sorted.bam"],
+        "gtf_file1": [
+        # ["data/nanopore_cDNA_NA12878/stringtie_filtered.gtf", 
+                      "data/nanopore_cDNA_ENCFF023EXJ/stringtie_filtered.gtf",
+                      "data/nanopore_dRNA-ENCFF155CFF/stringtie_filtered.gtf",
+                      "data/pacbio_ENCFF450VAU/stringtie_filtered.gtf",
+                      "data/SRR307903_hisat/stringtie_filtered.gtf"],
+                    #   "data/nanopore_cDNA_ENCFF023EXJ/stringtie_filtered.gtf",
+                    #   "data/nanopore_dRNA_NA12878/stringtie_filtered.gtf"],
+        "gtf_file2": ["data/nanopore_cDNA_ENCFF023EXJ/isoquant_filtered.gtf",
+                      "data/nanopore_dRNA-ENCFF155CFF/isoquant_filtered.gtf",
+                      "data/pacbio_ENCFF450VAU/isoquant_filtered.gtf",
+                      "data/SRR307903_hisat/scallop2_filtered.gtf"],
+                    #   "data/nanopore_cDNA_NA12878/isoquant_filtered.gtf", ,
+                    #   "data/nanopore_dRNA_NA12878/isoquant_filtered.gtf"],
+        "tmap_file1":  ["data/nanopore_cDNA_ENCFF023EXJ/stringtie.stringtie_filtered.gtf.tmap",
+                        "data/nanopore_dRNA-ENCFF155CFF/stringtie.stringtie_filtered.gtf.tmap",
+                       "data/pacbio_ENCFF450VAU/stringtie.stringtie_filtered.gtf.tmap",
+                       "data/SRR307903_hisat/stringtie.stringtie_filtered.gtf.tmap"],
+                    #    "data/nanopore_cDNA_NA12878/stringtie.stringtie_filtered.gtf.tmap",
+                    #    "data/nanopore_dRNA_NA12878/stringtie.stringtie_filtered.gtf.tmap"],
+        "tmap_file2":  ["data/nanopore_cDNA_ENCFF023EXJ/isoquant.isoquant_filtered.gtf.tmap",   
+                        "data/nanopore_dRNA-ENCFF155CFF/isoquant.isoquant_filtered.gtf.tmap",
+                       "data/pacbio_ENCFF450VAU/isoquant.isoquant_filtered.gtf.tmap",
+                        "data/SRR307903_hisat/scallop2.scallop2_filtered.gtf.tmap"],
+                    #    "data/nanopore_cDNA_NA12878/isoquant.isoquant_filtered.gtf.tmap",
+                    #    "data/nanopore_dRNA_NA12878/isoquant.isoquant_filtered.gtf.tmap"],
+        "ref_anno_gtf": [GENCODE_REF, GENCODE_REF, GENCODE_REF, ENSEMBLE_REF] #, GENCODE_REF, GENCODE_REF]
     }
     
     train_configs_df = pd.DataFrame(train_configs)
@@ -157,7 +162,7 @@ def init_parallel():
                    row["ref_anno_gtf"])
         dataset_tasks.append(row_data)
     
-    # dataset_tasks = dataset_tasks[:1]
+    # dataset_tasks = dataset_tasks[3:5]
     # Process datasets in parallel (max 2 concurrent datasets to avoid overwhelming system)
     max_concurrent_datasets = min(2, len(dataset_tasks))
     print(f"🚀 Starting parallel processing with {max_concurrent_datasets} concurrent datasets...")

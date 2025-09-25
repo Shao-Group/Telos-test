@@ -30,11 +30,24 @@ def load_candidate_sites(file_path):
     for line in candidate_sites_text.strip().split("\n"):
         parts = line.strip().split()
         site_type, chrom, pos, pos_strand_count, neg_strand_count = parts[0], parts[1], int(parts[2]), int(parts[3]), int(parts[4])
-        strand = "+" if pos_strand_count > neg_strand_count else "-" 
+        if pos_strand_count > neg_strand_count:
+            strand = "+"
+        elif pos_strand_count < neg_strand_count:
+            strand = "-"
+        else:
+            strand = "."
         if site_type == "TSS":
-            tss_candidate_sites.append((chrom, pos, strand))
+            if strand == ".":
+                tss_candidate_sites.append((chrom, pos, "+"))
+                tss_candidate_sites.append((chrom, pos, "-"))
+            else:
+                tss_candidate_sites.append((chrom, pos, strand))
         elif site_type == "TES":
-            tes_candidate_sites.append((chrom, pos, strand))
+            if strand == ".":
+                tes_candidate_sites.append((chrom, pos, "+"))
+                tes_candidate_sites.append((chrom, pos, "-"))
+            else:
+                tes_candidate_sites.append((chrom, pos, strand))
 
     return tss_candidate_sites, tes_candidate_sites
 
@@ -820,13 +833,13 @@ def main(cfg, config_path):
     tss_candidate_sites, tes_candidate_sites = load_candidate_sites(cfg.candidate_file)
     
     # # Collect features
-    if os.path.exists(cfg.tss_feature_file) and os.path.exists(cfg.tes_feature_file):
-        print(f"Feature files already exist: {cfg.tss_feature_file}, {cfg.tes_feature_file}")
-        # Close the BAM file
-        bam.close()
-        save_config(config_path)
+    # if os.path.exists(cfg.tss_feature_file) and os.path.exists(cfg.tes_feature_file):
+    #     print(f"Feature files already exist: {cfg.tss_feature_file}, {cfg.tes_feature_file}")
+    #     # Close the BAM file
+    #     bam.close()
+    #     save_config(config_path)
 
-        return
+    #     return
 
     print("Extracting TSS candidate features...")
     

@@ -14,7 +14,7 @@ import numpy as np
 from config import Config, load_config
 from argparse import ArgumentParser
 
-TRANSCRIPT_PLOT_FOLDER = "plots/transcript_pr_curves_compare"
+
 
 def plot_pr_curves_on_subplot(config: Config, ax, title_prefix="", is_train=False):
     """
@@ -72,45 +72,34 @@ def plot_pr_curves_on_subplot(config: Config, ax, title_prefix="", is_train=Fals
     ax.grid(False)
 
 def main():
-    # Load the configuration file
-    os.makedirs(TRANSCRIPT_PLOT_FOLDER, exist_ok=True)
     parser = ArgumentParser()
     parser.add_argument('--config_folder', required=True, help='Path to the configuration file')
     parser.add_argument('--is_train', action='store_true', help='Is training chromosomes')
     args = parser.parse_args()
 
-    train_prefix = ["cDNA-ENCFF023EXJ", "cDNA-NA12878", "dRNA-ENCFF155CFF", "dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903"]
-    test_prefix = ["cDNA-ENCFF263YFG", "cDNA-K562","dRNA-ENCFF771DIX", "dRNA-Hek293T", "pacbio_ENCFF694DIE", "SRR307911"]
-    
-    # Create pairs of datasets
-    for i, (train_p, test_p) in enumerate(zip(train_prefix, test_prefix)):
-        # Create a figure with 2x2 subplots
-        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-        # fig.suptitle(f'PR Curves Comparison: {train_p} (Train) vs {test_p} (Test)', fontsize=18, fontweight="bold")
-        
-        # Training datasets - top row
-        train_prefix1 = (train_p + "_stringtie")
-        train_prefix2 = (train_p + "_isoquant") if not train_p.startswith("SRR") else (train_p + "_scallop2")
-        train_config1 = load_config(os.path.join(args.config_folder, f"{train_prefix1}_config.pkl"))
-        train_config2 = load_config(os.path.join(args.config_folder, f"{train_prefix2}_config.pkl"))
-        
-        plot_pr_curves_on_subplot(train_config1, axes[0, 0], "Training Dataset", args.is_train)
-        plot_pr_curves_on_subplot(train_config2, axes[0, 1], "Training Dataset", args.is_train)
-        
-        # Testing datasets - bottom row
-        test_prefix1 = (test_p + "_stringtie")
-        test_prefix2 = (test_p + "_isoquant") if not test_p.startswith("SRR") else (test_p + "_scallop2")
-        test_config1 = load_config(os.path.join(args.config_folder, f"{test_prefix1}_config.pkl"))
-        test_config2 = load_config(os.path.join(args.config_folder, f"{test_prefix2}_config.pkl"))
-        
-        plot_pr_curves_on_subplot(test_config1, axes[1, 0], "Testing Dataset", args.is_train)
-        plot_pr_curves_on_subplot(test_config2, axes[1, 1], "Testing Dataset", args.is_train)
-        
+    suffix = "train" if args.is_train else "val"
+    TRANSCRIPT_PLOT_FOLDER = f"plots_individual/transcript_pr_curves_extended/{suffix}"
+    os.makedirs(TRANSCRIPT_PLOT_FOLDER, exist_ok=True)
+
+    # Discover all config files and plot individually per config
+    config_files = sorted([f for f in os.listdir(args.config_folder) if f.endswith('_config.pkl')])
+    for cfg_file in config_files:
+        cfg_path = os.path.join(args.config_folder, cfg_file)
+        print("loading {}".format(cfg_path))
+        try:
+            config = load_config(cfg_path)
+        except Exception as e:
+            print(f"Skipping {cfg_file}: {e}")
+            continue
+
+        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        plot_pr_curves_on_subplot(config, ax, title_prefix='Transcript PR', is_train=args.is_train)
         plt.tight_layout()
-        plt.savefig(f'{TRANSCRIPT_PLOT_FOLDER}/pr_curves_compare_{train_p}_vs_{test_p}{"-train" if args.is_train else "-test"}.pdf', format='pdf', dpi=300, bbox_inches='tight')
-        plt.close()  # Close the figure to free memory
-        
-        print(f"Finished plotting PR curve comparison for {train_p} (train) vs {test_p} (test)")
+        out_name = os.path.splitext(cfg_file)[0].replace('_config', f'_{suffix}_transcript_pr') + '.pdf'
+        out_path = os.path.join(TRANSCRIPT_PLOT_FOLDER, out_name)
+        plt.savefig(out_path, format='pdf', dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"Saved {out_path}")
 
 
 if __name__ == "__main__":

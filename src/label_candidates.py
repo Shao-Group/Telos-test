@@ -167,7 +167,7 @@ def perform_feature_selection(df, cfg, site_type):
     # Step 4: Recursive feature elimination with Random Forest
     if len(kept_features) > 50000:  # Only do RFE if we have enough features
         X_filtered, kept_features, rf_importance = _recursive_feature_elimination(
-            X_filtered, y, max_features=min(200, len(kept_features))
+            X_filtered, y, max_features=min(10, len(kept_features))
         )
         print(f"Features after recursive elimination: {len(kept_features)}")
     else:
