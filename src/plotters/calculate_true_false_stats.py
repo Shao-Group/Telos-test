@@ -19,6 +19,31 @@ from typing import Dict, List, Tuple
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from config import Config
 
+dataset_to_run_accession = {
+    "dRNA-ENCFF155CFF": "ENCFF155CFF",
+    "dRNA-ENCFF771DIX": "ENCFF771DIX",
+    "dRNA-NA12878": "dRNA NA12878",
+    "dRNA-Hek293T": "ERR6053059",
+    "cDNA-K562": "ERR6053079",
+    "cDNA-NA12878": "cDNA NA12878",
+    "cDNA-ENCFF263YFG": "ENCFF263YFG",
+    "cDNA-ENCFF023EXJ": "ENCFF023EXJ",
+    "pacbio_ENCFF450VAU": "ENCFF450VAU",
+    "pacbio_ENCFF694DIE": "ENCFF694DIE",
+    "pacbio_ENCFF563QZR": "ENCFF563QZR",
+    "pacbio_ENCFF370NFS": "ENCFF370NFS",
+    "SRR307903": "SRR307903",
+    "SRR307911": "SRR307911",
+    "SRR545695": "SRR545695",
+    "SRR315334": "SRR315334",
+    "SRR534307": "SRR534307",
+    "SRR545723": "SRR545723",
+    "SRR315323": "SRR315323",
+    "SRR534319": "SRR534319",
+    "SRR534291": "SRR534291",
+    "SRR387661": "SRR387661"
+}
+
 def load_configs_from_directory(config_dir: str) -> List[Config]:
     """
     Load all training config files from the specified directory.
@@ -105,7 +130,7 @@ def extract_dataset_info(config: Config) -> Dict[str, str]:
         assembler = 'unknown'
     
     return {
-        'dataset': dataset,
+        'dataset': dataset_to_run_accession[dataset],
         'assembler': assembler,
         'data_name': data_name
     }
@@ -236,8 +261,8 @@ def save_results(df: pd.DataFrame, summary_df: pd.DataFrame, output_prefix: str)
     summary_df.to_csv(summary_file, index=False)
     print(f"Summary results saved to: {summary_file}")
     
-    # Create LaTeX table
-    create_latex_table(df, f"{output_prefix}_latex.txt")
+    # Create LaTeX table (compact two-assembler format)
+    create_latex_table_compact(df, f"{output_prefix}_latex.txt")
     
     # Create formatted text tables
     detailed_table_file = f"{output_prefix}_detailed_table.txt"
@@ -368,6 +393,95 @@ def create_latex_table(df: pd.DataFrame, output_file: str) -> None:
         f.write("\\end{tabular}\n")
         f.write("\\end{table}\n")
     
+    print(f"LaTeX table saved to: {output_file}")
+
+def create_latex_table_compact(df: pd.DataFrame, output_file: str) -> None:
+    """
+    Create a LaTeX table matching the requested compact format:
+    Dataset | Site Type | Assembler1 True | Assembler1 False | Assembler2 True | Assembler2 False
+    
+    Assumptions:
+    - Assembler 1 = StringTie
+    - Assembler 2 = IsoQuant
+    - Percentages are per-assembler within each dataset+site type
+    """
+    # Keep only stringtie and isoquant
+    # df2 = df[df['assembler'].isin(['stringtie', 'isoquant'])].copy()
+    if df.empty:
+        with open(output_file, 'w') as f:
+            f.write('% No data for stringtie/isoquant to generate compact LaTeX table\n')
+        print(f"LaTeX table saved to: {output_file}")
+        return
+
+    # Compute counts per (dataset, site_type, assembler)
+    grp = df.groupby(['dataset', 'site_type', 'assembler'], as_index=False)[['true_sites', 'false_sites', 'total_candidates']].sum()
+
+    # Pivot to wide with separate columns for each assembler
+    wide_true = grp.pivot_table(index=['dataset', 'site_type'], columns='assembler', values='true_sites', fill_value=0)
+    wide_false = grp.pivot_table(index=['dataset', 'site_type'], columns='assembler', values='false_sites', fill_value=0)
+    wide_total = grp.pivot_table(index=['dataset', 'site_type'], columns='assembler', values='total_candidates', fill_value=0)
+
+    # Helper to format "count (xx.x\%)"
+    def fmt(count: int, total: int) -> str:
+        pct = (count / total * 100.0) if total > 0 else 0.0
+        return f"{count} ({pct:.1f}\\%)"
+
+    # Build ordered rows (Dataset sorted, site type TSS then TES)
+    idx = list(wide_true.index)
+    idx_sorted = sorted(idx, key=lambda t: (t[0], 0 if t[1] == 'TSS' else 1))
+
+    with open(output_file, 'w') as f:
+        f.write("% LaTeX table snippet - Compact two-assembler format\n")
+        f.write("% Use \\input{" + os.path.basename(output_file) + "} in your LaTeX document\n\n")
+        f.write("\\begin{table}[htb]\n")
+        f.write("\\centering\n")
+        f.write("\\caption{Distribution of true and false candidate sites predicted by two assemblers in the four training datasets.}\n")
+        f.write("\\label{tab:data-dist}\n\n")
+        f.write("\\begin{tabular}{l l r r r r} \n")
+        f.write("\\toprule % Top thick rule\n")
+        f.write("\\textbf{Dataset} & \\textbf{\\begin{tabular}[c]{@{}l@{}}Site\\\\ Type\\end{tabular}} & \\multicolumn{2}{c}{\\textbf{Assembler 1}} & \\multicolumn{2}{c}{\\textbf{Assembler 2}} \\ \\\n")
+        f.write("\\cmidrule(lr){3-4} \\cmidrule(lr){5-6} % Mid-rules for \"Assembler 1\" and \"Assembler 2\"\n")
+        f.write("\\multicolumn{1}{c}{} & & \\textbf{True} & \\textbf{False} & \\textbf{True} & \\textbf{False} \\ \\\n")
+        f.write("\\midrule % Medium rule to separate header from data\n")
+
+        current_dataset = None
+        for dataset, site_type in idx_sorted:
+            true_s1 = int(wide_true.loc[(dataset, site_type)].get('stringtie', 0)) if ('stringtie' in wide_true.columns) else 0
+            false_s1 = int(wide_false.loc[(dataset, site_type)].get('stringtie', 0)) if ('stringtie' in wide_false.columns) else 0
+            tot_s1 = int(wide_total.loc[(dataset, site_type)].get('stringtie', 0)) if ('stringtie' in wide_total.columns) else 0
+
+            # Assembler 2 depends on dataset: use scallop2 for SRR*, else isoquant
+            assembler2_key = 'scallop2' if str(dataset).startswith('SRR') else 'isoquant'
+            true_s2 = int(wide_true.loc[(dataset, site_type)].get(assembler2_key, 0)) if (assembler2_key in wide_true.columns) else 0
+            false_s2 = int(wide_false.loc[(dataset, site_type)].get(assembler2_key, 0)) if (assembler2_key in wide_false.columns) else 0
+            tot_s2 = int(wide_total.loc[(dataset, site_type)].get(assembler2_key, 0)) if (assembler2_key in wide_total.columns) else 0
+
+            # Display-friendly dataset name
+            dataset_display = dataset.replace('_', '\\_')
+
+            # Row content
+            dataset_cell = dataset_display if current_dataset != dataset else ""
+            current_dataset = dataset
+
+            s1_true_cell = fmt(true_s1, tot_s1)
+            s1_false_cell = fmt(false_s1, tot_s1)
+            s2_true_cell = fmt(true_s2, tot_s2)
+            s2_false_cell = fmt(false_s2, tot_s2)
+
+            f.write(f"{dataset_cell} & {site_type}  & {s1_true_cell} & {s1_false_cell} & {s2_true_cell} & {s2_false_cell}  \\\n")
+
+            # Midrule between datasets (after TES or if next is a different dataset)
+            # Determine next tuple
+            next_idx = idx_sorted.index((dataset, site_type)) + 1
+            if next_idx < len(idx_sorted):
+                next_dataset, _ = idx_sorted[next_idx]
+                if next_dataset != dataset:
+                    f.write("\\midrule % Rule to separate datasets\n")
+
+        f.write("\\bottomrule % Bottom thick rule\n")
+        f.write("\\end{tabular}\n")
+        f.write("\\end{table}\n")
+
     print(f"LaTeX table saved to: {output_file}")
 
 def print_console_summary(df: pd.DataFrame, summary_df: pd.DataFrame) -> None:

@@ -60,17 +60,32 @@ name_dict = {
 }
 
 # Define colors for different curve types
-colors = {
-    # Tool-specific colors
-    "assembler1": "#000000",      # black
-    "assembler2": "#808080",      # grey
-    
-    # Model-specific colors (add more as needed)
-    "assembler1_xgboost": "#1f77b4", # blue
-    "assembler1_randomforest": "#008000", # green
-    "assembler2_xgboost": "#ff7f0e", # orange
-    "assembler2_randomforest": "#ff0000" # red
+# Use a single base color per assembler and vary linestyles for baseline/models
+assembler_base_colors = {
+    "assembler1": "#1f77b4",  # blue
+    "assembler2": "#ff7f0e"   # orange
 }
+
+# Color shade factors per model (same hue, different lightness)
+model_shade_factors = {
+    "xgboost": 0.75,       # darker
+    "randomforest": 1.00,  # base
+    "logistic": 1.15       # lighter
+}
+BASELINE_SHADE_FACTOR = 0.50  # darkest for baseline
+BASELINE_LINESTYLE = "dashed"  # dotted
+
+# Utility to lighten/darken a hex color while preserving hue and saturation
+from matplotlib.colors import to_rgb, to_hex
+import colorsys
+
+def shade_hex_color(hex_color: str, lightness_factor: float) -> str:
+    r, g, b = to_rgb(hex_color)
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    # scale lightness around 0.5 for smoother changes
+    new_l = max(0.0, min(1.0, l * lightness_factor))
+    nr, ng, nb = colorsys.hls_to_rgb(h, new_l, s)
+    return to_hex((nr, ng, nb))
 
 STAGE1_PR_PLOT_FOLDER = "plots_individual/stage1_pr_curves/"
 
@@ -85,8 +100,8 @@ def plot_pr(config_folder, is_train):
     suffix = "train" if is_train else "val"
 
     for i, name in enumerate(data_names):
-        if "ENCFF563QZR" not in name:
-            continue
+        # if "ENCFF563QZR" not in name:
+        #     continue
         tools =  ["stringtie", "scallop2"] if name.startswith("SRR") else ["stringtie", "isoquant"]
         tool_map = {
             "stringtie" : "assembler1",
@@ -107,14 +122,15 @@ def plot_pr(config_folder, is_train):
             }
             
             # print(pr_files)
+            end_precisions = []  # collect final precision values for ylim adjustment
             for tool, files in pr_files.items():
                 for fname in files:
                     # if not fname.endswith(f"_{suffix}_pr_data.csv"):
                     #     continue
                     # assert fname.endswith(f"_{suffix}_pr_data.csv")
-                    print(tool + " " + fname)
-                    if "isoquant" not in tool:
-                        continue
+                    # print(tool + " " + fname)
+                    # if "isoquant" not in tool:
+                    #     continue
                     if site not in fname:
                         continue
 
@@ -125,8 +141,9 @@ def plot_pr(config_folder, is_train):
 
                     model_type = fname.split("_")[1]  # e.g., "logistic"
                     label = f"{tool.title()} {model_type.title()}"
-                    color_key = f"{tool_map[tool]}_{model_type}"
-                    color = colors.get(color_key, colors.get(tool, "#333333"))
+                    assembler_key = tool_map[tool]
+                    base_color = assembler_base_colors.get(assembler_key, "#333333")
+                    color = shade_hex_color(base_color, model_shade_factors.get(model_type, 1.0))
 
                     # print(f"Plotting {label} with color {color}")
                     # print(f"PR data: {pr_df.head(3)}")
@@ -153,7 +170,7 @@ def plot_pr(config_folder, is_train):
                 
                 # Check for duplicates in coverage file
                 n_unique_positions = df_cov[[f"{site}_chrom", f"{site}_pos"]].drop_duplicates().shape[0]
-                print(f"Unique positions in coverage file: {n_unique_positions}, Total rows: {len(df_cov)} for {tool} {site}")
+                # print(f"Unique positions in coverage file: {n_unique_positions}, Total rows: {len(df_cov)} for {tool} {site}")
                 
                 if len(df_cov) > n_unique_positions:
                     # print(f"WARNING: Coverage file has duplicates! Averaging coverage values...")
@@ -180,8 +197,8 @@ def plot_pr(config_folder, is_train):
                 n_positive = baseline_filtered['label'].sum()
 
                 # print(f"Baseline columns: {baseline_filtered.columns}")
-                print(baseline_filtered[['chrom', 'position', f'{site}_chrom', f'{site}_pos', 'coverage', 'label']].head(50))
-                print(baseline_filtered[['chrom', 'position', f'{site}_chrom', f'{site}_pos', 'coverage', 'label']].tail(50))
+                # print(baseline_filtered[['chrom', 'position', f'{site}_chrom', f'{site}_pos', 'coverage', 'label']].head(50))
+                # print(baseline_filtered[['chrom', 'position', f'{site}_chrom', f'{site}_pos', 'coverage', 'label']].tail(50))
                 
                 for k in range(1, n_total + 1):
                     # Keep top i highest coverage points
@@ -199,14 +216,15 @@ def plot_pr(config_folder, is_train):
                     recalls.append(recall)
                 
                 # Plot coverage-based baseline PR curve
-                baseline_label = f"{tool_map[tool].title()} Baseline"
-                baseline_color = colors.get(f"{tool_map[tool]}", colors.get(tool, "#333333"))
+                assembler_key = tool_map[tool]
+                baseline_label = f"{assembler_key.title()} Baseline"
+                baseline_color = shade_hex_color(assembler_base_colors.get(assembler_key, "#333333"), BASELINE_SHADE_FACTOR)
                 
                 baseline_line = ax.plot(
                     recalls,
                     precisions,
                     label=baseline_label,
-                    # linestyle="dotted",
+                    linestyle=BASELINE_LINESTYLE,
                     linewidth=2,
                     color=baseline_color,
                     alpha=0.8
@@ -222,12 +240,21 @@ def plot_pr(config_folder, is_train):
                     alpha=0.5
                 )
                 
+                # record final precision of this tool's baseline for y-axis lower bound
+                if len(precisions) > 0:
+                    end_precisions.append(precisions[-1])
+                
             # formatting per‐subplot
-            ax.set_title(f"{name_dict.get(name, name)} - {site.upper()}", fontsize=12)
-            ax.set_xlabel("Recall", fontsize=10)
-            ax.set_ylabel("Precision", fontsize=10)
+            # ax.set_title(f"{name_dict.get(name, name)} - {site.upper()}", fontsize=12)
+            ax.set_xlabel("Recall", fontsize=14)
+            ax.set_ylabel("Precision", fontsize=14)
+            
+            # Adjust y-axis lower bound to slightly below the minimum of final precisions
+            if len(end_precisions) > 0:
+                y_min = max(0.0, min(end_precisions) * 0.95)
+                ax.set_ylim(y_min, 1.05)
 
-            ax.legend(loc='lower left', fontsize=9, frameon=True)
+            # ax.legend(loc='lower left', fontsize=9, frameon=True)
 
             plt.tight_layout()
             out_name = f"stage1_pr_{name}_{suffix}.pdf"

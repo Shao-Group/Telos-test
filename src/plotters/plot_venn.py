@@ -122,9 +122,13 @@ def plot_venn(config_folder, is_predictions, model_type=None):
         if "_" not in name_tool:
             continue
         name, tool = name_tool.rsplit("_", 1)
-        datasets_to_tools.setdefault(name, set()).add(tool)
+        
 
         cfg = load_config(path)
+        if 'train_output' in cfg.output_dir:
+            continue
+
+        datasets_to_tools.setdefault(name, set()).add(tool)
         tmp = set()
         with open(cfg.validation_chromosomes_file, 'r') as f:
             tmp.update(f.readlines())

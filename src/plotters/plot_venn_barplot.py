@@ -1,20 +1,22 @@
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 from argparse import ArgumentParser
 
 # Optional: reuse pretty names if available
 try:
-    from generate_stage1_pr_curve import name_dict
+    # from generate_stage1_pr_curve import name_dict
+    from calculate_true_false_stats import dataset_to_run_accession
 except Exception:
-    name_dict = {}
+    dataset_to_run_accession = {}
 
 
 def load_summary(csv_path: str) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
     # Normalize dataset names for display
-    if name_dict:
-        df["dataset_pretty"] = df["dataset"].apply(lambda x: name_dict.get(x, x))
+    if dataset_to_run_accession:
+        df["dataset_pretty"] = df["dataset"].apply(lambda x: dataset_to_run_accession.get(x, x))
     else:
         df["dataset_pretty"] = df["dataset"]
     return df
@@ -24,7 +26,7 @@ def plot_both_pct_barplot(baseline_dir: str,
                           predictions_root: str,
                           models: list,
                           output_path: str | None = None,
-                          figsize=(12, 8)) -> str:
+                          figsize=(12, 12)) -> str:
     baseline_csv = os.path.join(baseline_dir, "venn_summary.csv")
     if not os.path.exists(baseline_csv):
         raise FileNotFoundError(f"Baseline summary not found: {baseline_csv}")
@@ -74,21 +76,64 @@ def plot_both_pct_barplot(baseline_dir: str,
     categories = ["baseline_both_pct"] + [f"{m}_both_pct" for m, _ in model_frames]
     labels = ["Baseline"] + [m.replace("_", " ").title() for m, _ in model_frames]
 
-    x = range(len(df))
+    # Space datasets further apart by scaling x positions
+    x_idx = np.arange(len(df))
+    spacing_factor = 1.4  # >1 adds space between dataset groups
+    x_pos = x_idx * spacing_factor
     width = 0.25 if len(categories) == 3 else min(0.8 / max(len(categories), 1), 0.3)
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
 
     for idx, col in enumerate(categories):
-        offsets = [i + (idx - (len(categories) - 1) / 2) * width for i in x]
+        offsets = [x_pos[i] + (idx - (len(categories) - 1) / 2) * width for i in range(len(df))]
         ax.bar(offsets, df[col].fillna(0.0) / 100.0, width=width, label=labels[idx])
 
-    ax.set_xticks(list(x))
-    ax.set_xticklabels(df["dataset_pretty"], rotation=30, ha="right")
-    ax.set_ylabel("Jaccard Similarity")
-    ax.set_title("Baseline vs Predictions (Jaccard Similarity)")
-    ax.legend()
+    ax.set_xticks(list(x_pos))
+    ax.set_xticklabels(df["dataset_pretty"], rotation=45, ha="right", fontsize=15)
+    ax.set_ylabel("Jaccard Similarity", fontsize=16)
+    # ax.set_title("Baseline vs Predictions (Jaccard Similarity)")
+    ax.legend(fontsize=16)
     ax.grid(axis="y", linestyle=":", alpha=0.4)
+
+    # Add group titles centered above each contiguous group
+    group_title_map = {
+        "pacbio": "PacBio",
+        "cdna": "cDNA",
+        "drna": "dRNA",
+        "srr": "Short Reads",
+        "other": "Other",
+    }
+
+    # Ensure there is some headroom for titles
+    max_frac = 0.0
+    if len(df) > 0:
+        max_frac = (df[categories].max(axis=1).fillna(0.0) / 100.0).max()
+    upper = min(1.05, max_frac + 0.08)
+    ax.set_ylim(0.0, upper)
+
+    # Compute group ranges (start index inclusive, end index exclusive)
+    ranges = []
+    if len(df) > 0:
+        start_idx = 0
+        current_group = df.loc[0, "group"]
+        for i in range(1, len(df)):
+            g = df.loc[i, "group"]
+            if g != current_group:
+                ranges.append((current_group, start_idx, i))
+                current_group = g
+                start_idx = i
+        ranges.append((current_group, start_idx, len(df)))
+
+    # Place titles at the midpoint of each range
+    y_text = ax.get_ylim()[1] - 0.06
+    for g, start, end in ranges:
+        if end <= start:
+            continue
+        mid = (x_pos[start] + x_pos[end - 1]) / 2.0
+        title = group_title_map.get(g, g.title())
+        if g == 'srr':
+            mid = mid - 1.5*spacing_factor
+        ax.text(mid, y_text, title, ha="center", va="center", fontsize=18, fontweight="bold")
 
     # Draw separators between groups
     group_changes = []
@@ -97,10 +142,11 @@ def plot_both_pct_barplot(baseline_dir: str,
         for i in range(1, len(df)):
             g = df.loc[i, "group"]
             if g != prev_group:
-                group_changes.append(i - 0.5)
+                # separator halfway between spaced positions
+                group_changes.append((x_pos[i - 1] + x_pos[i]) / 2.0)
                 prev_group = g
     for xpos in group_changes:
-        ax.axvline(x=xpos, color="#888888", linestyle="--", linewidth=1)
+        ax.axvline(x=xpos, color="#888888", linestyle="--", linewidth=2)
 
     plt.tight_layout()
 
