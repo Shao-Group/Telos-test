@@ -34,7 +34,12 @@ def generate_legend_for_tools(tool_names: list[str], output_filename: str) -> st
         "scallop2": "Scallop2",
     }
 
-    legend_handles = []
+    model_map = {
+        "xgboost": "Telos-XGB",
+        "randomforest": "Telos-RF"
+    }
+    # Collect handles per tool so we can place each tool on its own row
+    tool_handles = {}
     model_order = ["xgboost", "randomforest"]
 
     for tool in tool_names:
@@ -43,42 +48,65 @@ def generate_legend_for_tools(tool_names: list[str], output_filename: str) -> st
 
         # Baseline entry
         baseline_color = shade_hex_color(base_color, BASELINE_SHADE_FACTOR)
-        legend_handles.append(
+        handles = [
             Line2D(
                 [0], [0], color=baseline_color, linestyle=BASELINE_LINESTYLE, linewidth=1,
                 label=f"{pretty_name.get(tool, tool.title())} Baseline",
             )
-        )
+        ]
 
         # Model entries
         for model in model_order:
             shade = model_shade_factors.get(model, 1.0)
             model_color = shade_hex_color(base_color, shade)
-            legend_handles.append(
+            handles.append(
                 Line2D(
                     [0], [0], color=model_color, linestyle="-", linewidth=2,
-                    label=f"{pretty_name.get(tool, tool.title())} {model.title()}",
+                    label=f"{pretty_name.get(tool, tool.title())} {model_map.get(model, model.title())}",
                 )
             )
 
-    # Create figure sized to the legend only
-    fig, ax = plt.subplots(figsize=(10, 1.6))
+        tool_handles[tool] = handles
+
+    # Create figure sized to the legend only (slightly taller to fit two rows)
+    fig, ax = plt.subplots(figsize=(10, 1.6 if len(tool_names) <= 1 else 1.9))
     ax.axis("off")
+    # Remove all outer margins
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
-    ax.legend(
-        handles=legend_handles,
-        loc="center",
-        ncol=3 * len(tool_names) // 1,
-        frameon=True,
-        fontsize=14,
-        columnspacing=1.4,
-        handlelength=2.8,
-        handletextpad=0.6,
-        borderaxespad=0.2,
-    )
+    # Place each tool's legend in a separate row, no frame, compact spacing
+    row_positions = [0.55, 0.45]
+    legend_objs = []
+    for idx, tool in enumerate(tool_names):
+        handles = tool_handles.get(tool, [])
+        if not handles:
+            continue
+        leg = ax.legend(
+            handles=handles,
+            loc="center",
+            bbox_to_anchor=(0.5, row_positions[idx] if idx < len(row_positions) else 0.5),
+            ncol=len(handles),
+            frameon=False,
+            fontsize=10,
+            columnspacing=0.8,
+            handlelength=2.0,
+            handletextpad=0.4,
+            borderaxespad=0.0,
+        )
+        ax.add_artist(leg)
+        legend_objs.append(leg)
 
-    fig.tight_layout(pad=0.3)
-    fig.savefig(out_path, dpi=300, format="pdf", bbox_inches="tight")
+    # Render, compute tight bbox around legend objects only, and save with no padding
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    from matplotlib.transforms import Bbox
+    if legend_objs:
+        bboxes = [leg.get_window_extent(renderer) for leg in legend_objs]
+        bbox = Bbox.union(bboxes)
+        bbox_inches = bbox.transformed(fig.dpi_scale_trans.inverted())
+        fig.savefig(out_path, dpi=300, format="pdf", bbox_inches=bbox_inches, pad_inches=0)
+    else:
+        fig.savefig(out_path, dpi=300, format="pdf", bbox_inches="tight", pad_inches=0)
     plt.close(fig)
     return out_path
 

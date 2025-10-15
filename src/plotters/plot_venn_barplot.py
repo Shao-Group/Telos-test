@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 # Optional: reuse pretty names if available
 try:
     # from generate_stage1_pr_curve import name_dict
-    from calculate_true_false_stats import dataset_to_run_accession
+    from calculate_true_false_stats import dataset_to_run_accession, pretty_model_names
 except Exception:
     dataset_to_run_accession = {}
 
@@ -25,9 +25,10 @@ def load_summary(csv_path: str) -> pd.DataFrame:
 def plot_both_pct_barplot(baseline_dir: str,
                           predictions_root: str,
                           models: list,
-                          output_path: str | None = None,
-                          figsize=(12, 12)) -> str:
-    baseline_csv = os.path.join(baseline_dir, "venn_summary.csv")
+                          output_path: str ,
+                          site_type: str,
+                          figsize=(12, 6)) -> str:
+    baseline_csv = os.path.join(baseline_dir, f"venn_summary_{site_type}.csv")
     if not os.path.exists(baseline_csv):
         raise FileNotFoundError(f"Baseline summary not found: {baseline_csv}")
     df_base = load_summary(baseline_csv)[["dataset", "dataset_pretty", "both_pct"]].rename(
@@ -74,7 +75,9 @@ def plot_both_pct_barplot(baseline_dir: str,
 
     # Prepare plot data
     categories = ["baseline_both_pct"] + [f"{m}_both_pct" for m, _ in model_frames]
-    labels = ["Baseline"] + [m.replace("_", " ").title() for m, _ in model_frames]
+    labels = [pretty_model_names.get(m) for m, _ in model_frames]
+    labels = ["Baseline"] + labels
+    print(labels)
 
     # Space datasets further apart by scaling x positions
     x_idx = np.arange(len(df))
@@ -92,7 +95,7 @@ def plot_both_pct_barplot(baseline_dir: str,
     ax.set_xticklabels(df["dataset_pretty"], rotation=45, ha="right", fontsize=15)
     ax.set_ylabel("Jaccard Similarity", fontsize=16)
     # ax.set_title("Baseline vs Predictions (Jaccard Similarity)")
-    ax.legend(fontsize=16)
+    ax.legend(fontsize=16, loc="upper right")
     ax.grid(axis="y", linestyle=":", alpha=0.4)
 
     # Add group titles centered above each contiguous group
@@ -108,7 +111,7 @@ def plot_both_pct_barplot(baseline_dir: str,
     max_frac = 0.0
     if len(df) > 0:
         max_frac = (df[categories].max(axis=1).fillna(0.0) / 100.0).max()
-    upper = min(1.05, max_frac + 0.08)
+    upper = min(1.05, max_frac + 0.1)
     ax.set_ylim(0.0, upper)
 
     # Compute group ranges (start index inclusive, end index exclusive)
@@ -150,10 +153,10 @@ def plot_both_pct_barplot(baseline_dir: str,
 
     plt.tight_layout()
 
-    if output_path is None:
-        output_dir = os.path.join("plots_individual", "venn_comparison")
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, "venn_both_pct_barplot.pdf")
+    # if output_path is None:
+    #     output_dir = os.path.join("plots_individual", "venn_comparison")
+    #     os.makedirs(output_dir, exist_ok=True)
+    #     output_path = os.path.join(output_dir, "venn_both_pct_barplot.pdf")
 
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
@@ -162,20 +165,26 @@ def plot_both_pct_barplot(baseline_dir: str,
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("--baseline_dir", default=os.path.join("plots_individual", "venn_baseline"),
-                        help="Directory containing baseline venn_summary.csv")
-    parser.add_argument("--predictions_root", default=os.path.join("plots_individual", "venn_predictions"),
-                        help="Root directory containing per-model folders with venn_summary.csv")
-    parser.add_argument("--models", nargs="*", default=["randomforest", "xgboost"],
-                        help="Model folder names under predictions_root to include")
-    parser.add_argument("--output", default=None, help="Output file path for the barplot (PDF/PNG)")
+    parser.add_argument("--site_type", required=True, help='Path to the configuration file')
+    # parser.add_argument("--baseline_dir", default=os.path.join("plots_individual", "venn_baseline"),
+    #                     help="Directory containing baseline venn_summary.csv")
+    # parser.add_argument("--predictions_root", default=os.path.join("plots_individual", "venn_predictions"),
+    #                     help="Root directory containing per-model folders with venn_summary.csv")
+    # parser.add_argument("--models", nargs="*", default=["randomforest", "xgboost"],
+    #                     help="Model folder names under predictions_root to include")
+    # parser.add_argument("--output", default=None, help="Output file path for the barplot (PDF/PNG)")
     args = parser.parse_args()
+    baseline_dir = os.path.join("plots_individual", "venn_baseline")
+    predictions_root = os.path.join("plots_individual", "venn_predictions")
+    models = ["randomforest", "xgboost"]
+    output = os.path.join("plots_individual", "venn_comparison", f"venn_both_pct_barplot_{args.site_type}.pdf")
 
     out = plot_both_pct_barplot(
-        baseline_dir=args.baseline_dir,
-        predictions_root=args.predictions_root,
-        models=args.models,
-        output_path=args.output,
+        baseline_dir=baseline_dir,
+        predictions_root=predictions_root,
+        models=models,
+        output_path=output,
+        site_type=args.site_type
     )
     print(f"Saved barplot to {out}")
 

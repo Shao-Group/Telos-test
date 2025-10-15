@@ -74,8 +74,9 @@ def plot_pr_curves_on_subplot(config: Config, ax, title_prefix="", is_train=Fals
         lt_type = 'dashed' if model_type == 'baseline' else 'solid'
         ax.plot(recalls, precisions, color=model_color, linestyle=lt_type, linewidth=2)
 
-    ax.set_xlabel('Recall (%)', fontsize=12)
-    ax.set_ylabel('Precision (%)', fontsize=12)
+    ax.set_xlabel('Recall (%)', fontsize=14)
+    ax.set_ylabel('Precision (%)', fontsize=14)
+    ax.tick_params(axis='both', labelsize=12)
     # ax.set_title(f'{title_prefix} - {config.data_name.split("_")[0]}', fontsize=14)
     # ax.legend(loc='lower left', fontsize=11 )
     ax.grid(False)
@@ -111,7 +112,7 @@ def main():
 
     for base, tool_map in grouped.items():
         # Only plot if at least two tools exist; otherwise still plot what's available
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        fig, ax = plt.subplots(1, 1, figsize=(5, 5))
 
         legend_handles = []
         legend_labels = []

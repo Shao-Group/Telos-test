@@ -135,8 +135,9 @@ def plot_venn(config_folder, is_predictions, model_type=None):
         tmp = {chrom.strip() for chrom in tmp}
         validation_chromosomes[name].update(tmp)
 
-    # Collect summary stats for CSV output
-    summary_rows = []
+    # Collect summary stats for CSV output (separate for TSS and TES)
+    summary_rows_tss = []
+    summary_rows_tes = []
 
     for name, tools_present in sorted(datasets_to_tools.items()):
         print(f"Processing {name} with tools: {tools_present}")
@@ -152,14 +153,16 @@ def plot_venn(config_folder, is_predictions, model_type=None):
             print(f"Skipping {name} - need at least two tools, found: {tools_present}")
             continue
 
-        sets = {}
+        sets_tss = {}
+        sets_tes = {}
         for tool in tools:
             cfg_path = os.path.join(config_folder, f"{name}_{tool}_config.pkl")
             try:
                 config : Config = load_config(cfg_path)
             except Exception as e:
                 print(f"Skipping {name}/{tool} - cannot load {cfg_path}: {e}")
-                sets = {}
+                sets_tss = {}
+                sets_tes = {}
                 break
             tss_set : set = load_site_ids(config.tss_labeled_file, "tss", validation_chromosomes[name])
             tes_set : set = load_site_ids(config.tes_labeled_file, "tes", validation_chromosomes[name])
@@ -190,75 +193,105 @@ def plot_venn(config_folder, is_predictions, model_type=None):
                 tss_set = {site for site in tss_set if site in tss_pred_dict and tss_pred_dict[site] > 0.5}
                 tes_set = {site for site in tes_set if site in tes_pred_dict and tes_pred_dict[site] > 0.5}
                 
-               
-            sets[tool] = tss_set | tes_set
+            # keep TSS and TES separate
+            sets_tss[tool] = tss_set
+            sets_tes[tool] = tes_set
 
-        if len(sets) != 2:
+        if len(sets_tss) != 2 or len(sets_tes) != 2:
             print(f"Skipping {name} - need exactly two tools, found: {tools_present}")
             continue
 
-        inter = find_intersection_sets_optimized(sets[tools[0]], sets[tools[1]])
-        only1 = len(sets[tools[0]] - inter)
-        only2 = len(sets[tools[1]] - inter)
-        both  = len(inter)
-        
-        # Calculate total and percentages
-        total = only1 + only2 + both
-        only1_pct = (only1 / total * 100) if total > 0 else 0
-        only2_pct = (only2 / total * 100) if total > 0 else 0
-        both_pct = (both / total * 100) if total > 0 else 0
+        # TSS intersections
+        inter_tss = find_intersection_sets_optimized(sets_tss[tools[0]], sets_tss[tools[1]])
+        only1_tss = len(sets_tss[tools[0]] - inter_tss)
+        only2_tss = len(sets_tss[tools[1]] - inter_tss)
+        both_tss  = len(inter_tss)
+        total_tss = only1_tss + only2_tss + both_tss
+        only1_pct_tss = (only1_tss / total_tss * 100) if total_tss > 0 else 0
+        only2_pct_tss = (only2_tss / total_tss * 100) if total_tss > 0 else 0
+        both_pct_tss = (both_tss / total_tss * 100) if total_tss > 0 else 0
 
-        fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-        venn = venn2(
-            subsets=(only1, only2, both),
-            set_labels=(tools[0].capitalize(), tools[1].capitalize()),
-            ax=ax
-        )
-        for lbl in (venn.set_labels or []):
-            if lbl:
-                lbl.set_fontsize(20)
+        # TES intersections
+        inter_tes = find_intersection_sets_optimized(sets_tes[tools[0]], sets_tes[tools[1]])
+        only1_tes = len(sets_tes[tools[0]] - inter_tes)
+        only2_tes = len(sets_tes[tools[1]] - inter_tes)
+        both_tes  = len(inter_tes)
+        total_tes = only1_tes + only2_tes + both_tes
+        only1_pct_tes = (only1_tes / total_tes * 100) if total_tes > 0 else 0
+        only2_pct_tes = (only2_tes / total_tes * 100) if total_tes > 0 else 0
+        both_pct_tes = (both_tes / total_tes * 100) if total_tes > 0 else 0
 
-        # Update labels to show count and percentage
-        if venn.subset_labels[0]:  # only1 region
-            venn.subset_labels[0].set_text(f"{only1}\n({only1_pct:.2f}%)")
-            venn.subset_labels[0].set_fontsize(16)
-        if venn.subset_labels[1]:  # only2 region
-            venn.subset_labels[1].set_text(f"{only2}\n({only2_pct:.2f}%)")
-            venn.subset_labels[1].set_fontsize(16)
-        if venn.subset_labels[2]:  # both region
-            venn.subset_labels[2].set_text(f"{both}\n({both_pct:.2f}%)")
-            venn.subset_labels[2].set_fontsize(16)
-        ax.set_title(name_dict.get(name, name), fontsize=22)
+        # fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        # venn = venn2(
+        #     subsets=(only1, only2, both),
+        #     set_labels=(tools[0].capitalize(), tools[1].capitalize()),
+        #     ax=ax
+        # )
+        # for lbl in (venn.set_labels or []):
+        #     if lbl:
+        #         lbl.set_fontsize(20)
 
-        plt.tight_layout()
-        out_path = os.path.join(VENN_OUTPUT_DIR, f"venn_{name}_{tools[0]}_vs_{tools[1]}.pdf")
-        plt.savefig(out_path, dpi=300, format="pdf", bbox_inches="tight")
-        plt.close(fig)
-        print(f"Saved {out_path}")
+        # # Update labels to show count and percentage
+        # if venn.subset_labels[0]:  # only1 region
+        #     venn.subset_labels[0].set_text(f"{only1}\n({only1_pct:.2f}%)")
+        #     venn.subset_labels[0].set_fontsize(16)
+        # if venn.subset_labels[1]:  # only2 region
+        #     venn.subset_labels[1].set_text(f"{only2}\n({only2_pct:.2f}%)")
+        #     venn.subset_labels[1].set_fontsize(16)
+        # if venn.subset_labels[2]:  # both region
+        #     venn.subset_labels[2].set_text(f"{both}\n({both_pct:.2f}%)")
+        #     venn.subset_labels[2].set_fontsize(16)
+        # ax.set_title(name_dict.get(name, name), fontsize=22)
 
-        # Save stats for CSV output
-        summary_rows.append({
+        # plt.tight_layout()
+        # out_path = os.path.join(VENN_OUTPUT_DIR, f"venn_{name}_{tools[0]}_vs_{tools[1]}.pdf")
+        # plt.savefig(out_path, dpi=300, format="pdf", bbox_inches="tight")
+        # plt.close(fig)
+        # print(f"Saved {out_path}")
+
+        # Save stats for CSV output (TSS)
+        summary_rows_tss.append({
             "dataset": name,
             "tool_1": tools[0],
             "tool_2": tools[1],
-            "only_tool_1_count": only1,
-            "only_tool_2_count": only2,
-            "both_count": both,
-            "only_tool_1_pct": round(only1_pct, 6),
-            "only_tool_2_pct": round(only2_pct, 6),
-            "both_pct": round(both_pct, 6),
-            "total": total,
+            "only_tool_1_count": only1_tss,
+            "only_tool_2_count": only2_tss,
+            "both_count": both_tss,
+            "only_tool_1_pct": round(only1_pct_tss, 6),
+            "only_tool_2_pct": round(only2_pct_tss, 6),
+            "both_pct": round(both_pct_tss, 6),
+            "total": total_tss,
             "is_predictions": bool(is_predictions),
             "model_type": model_type if is_predictions else None,
         })
 
-    # Write a single CSV summary per run (predictions vs baseline)
-    if summary_rows:
-        df_summary = pd.DataFrame(summary_rows)
-        csv_name = "venn_summary.csv"
-        csv_path = os.path.join(VENN_OUTPUT_DIR, csv_name)
-        df_summary.to_csv(csv_path, index=False)
-        print(f"Saved summary CSV: {csv_path}")
+        # Save stats for CSV output (TES)
+        summary_rows_tes.append({
+            "dataset": name,
+            "tool_1": tools[0],
+            "tool_2": tools[1],
+            "only_tool_1_count": only1_tes,
+            "only_tool_2_count": only2_tes,
+            "both_count": both_tes,
+            "only_tool_1_pct": round(only1_pct_tes, 6),
+            "only_tool_2_pct": round(only2_pct_tes, 6),
+            "both_pct": round(both_pct_tes, 6),
+            "total": total_tes,
+            "is_predictions": bool(is_predictions),
+            "model_type": model_type if is_predictions else None,
+        })
+
+    # Write separate CSV summaries per run: TSS and TES
+    if summary_rows_tss:
+        df_summary_tss = pd.DataFrame(summary_rows_tss)
+        csv_path_tss = os.path.join(VENN_OUTPUT_DIR, "venn_summary_tss.csv")
+        df_summary_tss.to_csv(csv_path_tss, index=False)
+        print(f"Saved summary CSV (TSS): {csv_path_tss}")
+    if summary_rows_tes:
+        df_summary_tes = pd.DataFrame(summary_rows_tes)
+        csv_path_tes = os.path.join(VENN_OUTPUT_DIR, "venn_summary_tes.csv")
+        df_summary_tes.to_csv(csv_path_tes, index=False)
+        print(f"Saved summary CSV (TES): {csv_path_tes}")
 # plt.show()
 
 

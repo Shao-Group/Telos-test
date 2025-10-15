@@ -19,6 +19,12 @@ from typing import Dict, List, Tuple
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from config import Config
 
+pretty_model_names = {
+    "baseline": "Baseline",
+    "randomforest": "Telos-RF",
+    "xgboost": "Telos-XGB"
+}
+
 dataset_to_run_accession = {
     "dRNA-ENCFF155CFF": "ENCFF155CFF",
     "dRNA-ENCFF771DIX": "ENCFF771DIX",

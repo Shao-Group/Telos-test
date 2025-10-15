@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 from argparse import ArgumentParser
 from config import load_config, Config
+from sklearn.metrics import auc
 
 
 # —— USER SETTINGS ——
@@ -21,7 +22,8 @@ data_names = [
         "cDNA-NA12878", 
         "dRNA-Hek293T", 
         "dRNA-ENCFF771DIX",
-        "dRNA-NA12878",
+        # "dRNA-NA12878",
+        "dRNA-ENCFF155CFF",
         "pacbio_ENCFF694DIE",
         "pacbio_ENCFF563QZR",
         "pacbio_ENCFF370NFS",
@@ -30,7 +32,7 @@ data_names = [
         "SRR315334",
         "SRR534307",
         "SRR545723",
-        "SRR307911",
+        # "SRR307911",
         "SRR315323",
         "SRR534319",
         "SRR534291",
@@ -42,7 +44,7 @@ name_dict = {
     "cDNA-NA12878" : "NA12878 cDNA",
     "dRNA-Hek293T" : "Hek293T dRNA",
     "dRNA-ENCFF771DIX" : "ENCFF771DIX dRNA",
-    "dRNA-NA12878" : "NA12878 dRNA",
+    "dRNA-ENCFF155CFF" : "ENCFF155CFF dRNA",
     "pacbio_ENCFF694DIE" : "ENCFF694DIE pacbio",
     "pacbio_ENCFF563QZR" : "ENCFF563QZR pacbio",
     "pacbio_ENCFF370NFS" : "ENCFF370NFS pacbio",
@@ -98,6 +100,8 @@ def plot_pr(config_folder, is_train):
     os.makedirs(tss_folder, exist_ok=True)
     os.makedirs(tes_folder, exist_ok=True)
     suffix = "train" if is_train else "val"
+    # Collect AUPR rows across all datasets/tools/sites
+    aupr_records = []
 
     for i, name in enumerate(data_names):
         # if "ENCFF563QZR" not in name:
@@ -114,8 +118,8 @@ def plot_pr(config_folder, is_train):
             tools[1] : load_config(os.path.join(config_folder, f"{name}_{tools[1]}_config.pkl"))
         }
         for j, site in enumerate(site_types):
-            fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-            
+            fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+            print("Generating PR curve for {} {}".format(name, site))
             pr_files  = {
                 tools[0] : os.listdir(configs[tools[0]].pr_data_dir), 
                 tools[1] : os.listdir(configs[tools[1]].pr_data_dir)
@@ -156,6 +160,17 @@ def plot_pr(config_folder, is_train):
                         color=color,
                         linewidth=2
                     )[0]
+
+                    # Compute AUPR for this model curve using sklearn.metrics.auc (trapezoidal rule)
+                    pr_sorted = pr_df.sort_values("recall")
+                    aupr_val = float(auc(pr_sorted["recall"].values, pr_sorted["precision"].values))
+                    aupr_records.append({
+                        "dataset": name,
+                        "tool": tool,
+                        "site": site,
+                        "model_type": model_type,
+                        "aupr": aupr_val
+                    })
 
                 # baseline: coverage-based PR curve
                 labeled_data_file = configs[tool].tss_labeled_file if site == "tss" else configs[tool].tes_labeled_file
@@ -230,6 +245,20 @@ def plot_pr(config_folder, is_train):
                     alpha=0.8
                 )[0]
 
+                # Compute AUPR for baseline curve
+                if len(recalls) > 1 and len(precisions) == len(recalls):
+                    # recalls are generated in increasing order
+                    aupr_baseline = float(auc(recalls, precisions))
+                else:
+                    aupr_baseline = float("nan")
+                aupr_records.append({
+                    "dataset": name,
+                    "tool": tool,
+                    "site": site,
+                    "model_type": "baseline",
+                    "aupr": aupr_baseline
+                })
+
                 # add a point at the end of the curve
                 ax.plot(
                     [recalls[-1]],
@@ -248,7 +277,7 @@ def plot_pr(config_folder, is_train):
             # ax.set_title(f"{name_dict.get(name, name)} - {site.upper()}", fontsize=12)
             ax.set_xlabel("Recall", fontsize=14)
             ax.set_ylabel("Precision", fontsize=14)
-            
+            ax.tick_params(axis='both', labelsize=12)
             # Adjust y-axis lower bound to slightly below the minimum of final precisions
             if len(end_precisions) > 0:
                 y_min = max(0.0, min(end_precisions) * 0.95)
@@ -262,6 +291,16 @@ def plot_pr(config_folder, is_train):
             plt.savefig(out_path, dpi=300, format="pdf", bbox_inches="tight")
             plt.close(fig)
             print(f"Saved: {out_path}")
+
+    # Save AUPR records to CSV inside plots_individual
+    try:
+        os.makedirs("plots_individual", exist_ok=True)
+        aupr_df = pd.DataFrame(aupr_records, columns=["dataset", "tool", "site", "model_type", "aupr"])
+        aupr_csv_path = os.path.join("plots_individual", f"stage1_aupr_values_{suffix}.csv")
+        aupr_df.to_csv(aupr_csv_path, index=False)
+        print(f"Saved AUPR table: {aupr_csv_path}")
+    except Exception as e:
+        print(f"Failed to save AUPR CSV: {e}")
 
 
 def main():
