@@ -296,8 +296,9 @@ def _final_biological_selection(features, importance_scores, site_type):
     filtered_features = [f for f in features if f not in features_to_drop]
     
     # sorted_features = sorted(filtered_features, key=lambda x: importance_scores.get(x, 0), reverse=True)
-    positive_features = [f for f in filtered_features if importance_scores.get(f, 0) > 0]
-    final_features = positive_features
+    # positive_features = [f for f in filtered_features if importance_scores.get(f, 0) > 0]
+    # final_features = positive_features
+    final_features = filtered_features
 
     print(f"Feature filtering for {site_type}:")
     print(f"  Original features: {len(features)}")
@@ -306,7 +307,7 @@ def _final_biological_selection(features, importance_scores, site_type):
     
     # Sort by importance scores and return top 10
     # sorted_features = sorted(filtered_features, key=lambda x: importance_scores.get(x, 0), reverse=True)
-    final_features = filtered_features
+    # final_features = filtered_features
     
     return final_features
 

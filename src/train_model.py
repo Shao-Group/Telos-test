@@ -21,6 +21,7 @@ from sklearn.metrics import (
     classification_report
 )
 from sklearn.pipeline import Pipeline
+import lightgbm as lgb
 
 def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
     df_cov = pd.read_csv(project_config.cov_file, sep="\t")
@@ -39,6 +40,51 @@ def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
     df['tes_confidence'] = df.get('probability_tes', 0.5) 
     df['min_confidence'] = np.minimum(df['tss_confidence'], df['tes_confidence'])
     df['confidence_product'] = df['tss_confidence'] * df['tes_confidence']
+    
+    # Add feature interactions for better transcript prediction
+    # Exon-related interactions
+    if 'exon_count' in df.columns:
+        df['exon_density'] = df['exon_count'] / df['transcript_length'].clip(lower=1)  # Exons per kb
+        df['confidence_exon_interaction'] = df['confidence_product'] * df['exon_count']
+        df['coverage_per_exon'] = df['coverage'] / df['exon_count'].clip(lower=1)
+    
+    if 'total_exon_length' in df.columns and 'exon_count' in df.columns:
+        df['avg_exon_length'] = df['total_exon_length'] / df['exon_count'].clip(lower=1)
+    
+    if 'max_exon_length' in df.columns and 'min_exon_length' in df.columns:
+        df['exon_length_ratio'] = df['max_exon_length'] / df['min_exon_length'].clip(lower=1)
+    
+    # Coverage-transcript interactions
+    df['coverage_length_ratio'] = df['coverage'] / df['transcript_length'].clip(lower=1)
+    df['confidence_coverage_interaction'] = df['confidence_product'] * df['coverage']
+    
+    # TSS/TES confidence interactions
+    df['confidence_sum'] = df['tss_confidence'] + df['tes_confidence']
+    df['confidence_diff'] = abs(df['tss_confidence'] - df['tes_confidence'])
+    
+    # Transcript structure features
+    if 'first_exon_length' in df.columns and 'last_exon_length' in df.columns:
+        df['terminal_exon_ratio'] = df['first_exon_length'] / df['last_exon_length'].clip(lower=1)
+    
+    if 'mean_exon_length' in df.columns and 'transcript_length' in df.columns:
+        df['exon_efficiency'] = df['mean_exon_length'] / df['transcript_length'].clip(lower=1)
+    
+    # Add log transformations for skewed features
+    skewed_features = ['coverage', 'total_reads', 'transcript_length']
+    for feature in skewed_features:
+        if feature in df.columns:
+            df[f'log_{feature}'] = np.log1p(df[feature])
+    
+    # Add exon length entropy (measure of exon length diversity)
+    if all(col in df.columns for col in ['max_exon_length', 'min_exon_length', 'mean_exon_length']):
+        # Calculate coefficient of variation as a proxy for entropy
+        exon_length_cv = (df['max_exon_length'] - df['min_exon_length']) / df['mean_exon_length'].clip(lower=1)
+        df['exon_length_entropy'] = np.log1p(exon_length_cv)
+    
+    # Add additional exon diversity features
+    if 'exon_count' in df.columns and 'total_exon_length' in df.columns:
+        df['exon_length_std'] = np.sqrt(df['exon_length_variance']) if 'exon_length_variance' in df.columns else 0
+        df['exon_length_skewness'] = (df['max_exon_length'] - df['mean_exon_length']) / df['exon_length_std'].clip(lower=1)
     
     X_train, X_test, y_train, y_test, train_mask, test_mask = stratified_split(df, validation_chrom_file=project_config.validation_chromosomes_file, train_chrom_file=project_config.train_chromosomes_file, return_mask=True)
     
@@ -70,29 +116,55 @@ def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
         
     # MINIMAL MODIFICATION: Optimize hyperparameters for transcript prediction
     clf_xgb = XGBClassifier(
-            n_estimators=300,  # More trees
-            max_depth=8,       # Deeper for interactions
-            learning_rate=0.1, # Lower learning rate
+            n_estimators=500,  # More trees for complex transcript patterns
+            max_depth=8,       # Reduced depth to prevent overfitting
+            learning_rate=0.05, # Lower learning rate for better generalization
             subsample=0.8,
             colsample_bytree=0.8,
             objective='binary:logistic',
             random_state=42,
             eval_metric='aucpr',
-            n_jobs=8
-            # reg_lambda = 3,
-            # reg_alpha = 0.5
-            # eval_metric='aucpr'
-            # scale_pos_weight=len(y_train[y_train==0]) / max(len(y_train[y_train==1]), 1)  # Handle imbalance
+            n_jobs=20,
+            reg_lambda=1.0,     # L2 regularization
+            reg_alpha=0.1,      # L1 regularization
+            # scale_pos_weight=scale_pos_weight,  # Handle class imbalance
+            early_stopping_rounds=50,  # Prevent overfitting
+            min_child_weight=3,  # Require more samples per leaf
+            gamma=0.1           # Minimum loss reduction for splits
         )
     clf_rf = RandomForestClassifier(
         n_estimators=500,
-        max_depth=8,
-        random_state=42
+        max_depth=32,
+        random_state=42,
+        n_jobs=20
     )
     
+    # LightGBM classifier - tuned for ~180 features
+    clf_lgb = lgb.LGBMClassifier(
+        n_estimators=300,        # Reduced for faster training
+        max_depth=6,             # Reduced to prevent overfitting
+        learning_rate=0.03,      # Lower learning rate for better generalization
+        num_leaves=15,           # Reduced (should be < 2^max_depth)
+        feature_fraction=0.7,    # Use 70% of features per tree
+        bagging_fraction=0.7,    # Use 70% of samples per tree
+        bagging_freq=3,          # Bag every 3 iterations
+        reg_alpha=0.2,           # Increased L1 regularization
+        reg_lambda=0.2,          # Increased L2 regularization
+        min_child_samples=20,    # Require more samples per leaf
+        min_split_gain=0.01,     # Minimum gain for splits
+        subsample_for_bin=200000, # Samples for binning
+        random_state=42,
+        n_jobs=20,
+        verbose=-1,
+        force_col_wise=True      # Better for many features
+    )
+    
+    
+    # Default to XGBoost
     clf = Pipeline([
         # ('scaler', StandardScaler()),
-        ('clf', clf_xgb)
+        # ('clf', clf_xgb)
+        ('clf', clf_lgb)
     ])
     
     
@@ -126,6 +198,21 @@ def train_and_evaluate_stage2(df_tss, df_tes, project_config, model_type):
     print("F1 score (macro):", report_dict['macro avg']['f1-score'])
     print("Precision (macro):", report_dict['macro avg']['precision'])
     print("Recall (macro):", report_dict['macro avg']['recall'])
+    
+    # Feature importance analysis for stage2
+    if hasattr(clf.named_steps['clf'], 'feature_importances_'):
+        importances = clf.named_steps['clf'].feature_importances_
+        feature_importance_df = pd.DataFrame({
+            'feature': features,
+            'importance': importances
+        }).sort_values('importance', ascending=False)
+        
+        print(f"\nTop 20 most important features for stage2:")
+        print(feature_importance_df.head(20))
+        
+        # Save feature importance
+        feature_importance_df.to_csv(os.path.join(project_config.feature_importance_dir, f"{model_type}_stage2_feature_importance.csv"), index=False)
+        print(f"Feature importance saved to {project_config.feature_importance_dir}/{model_type}_stage2_feature_importance.csv")
 
     # save predictions
     pred_df = X_test.copy()

@@ -114,10 +114,10 @@ def init_parallel():
     train_configs = {
         # "prefix": ["cDNA-NA12878","dRNA-NA12878", "pacbio_ENCFF450VAU", "SRR307903"],
         # "prefix" : ["cDNA-NA12878","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903", "cDNA-ENCFF023EXJ", "dRNA-NA12878"],
-        "prefix" : ["cDNA-ENCFF023EXJ","dRNA-ENCFF155CFF", "pacbio_ENCFF450VAU", "SRR307903"],
+        "prefix" : ["cDNA-ENCFF023EXJ","dRNA-NA12878", "pacbio_ENCFF450VAU", "SRR307903"],
         "bam_file": [
                      "data/nanopore_cDNA_ENCFF023EXJ/ENCFF023EXJ.sorted.bam",
-                     "data/nanopore_dRNA-ENCFF155CFF/dRNA-ENCFF155CFF.sorted.bam",
+                     "data/nanopore_dRNA_NA12878/NA12878-DirectRNA.sorted.bam",
                      "data/pacbio_ENCFF450VAU/ENCFF450VAU.sorted.bam",
                      "data/SRR307903_hisat/hisat.sorted.bam"
                     ],
@@ -126,25 +126,25 @@ def init_parallel():
         "gtf_file1": [
         # ["data/nanopore_cDNA_NA12878/stringtie_filtered.gtf", 
                       "data/nanopore_cDNA_ENCFF023EXJ/stringtie_filtered.gtf",
-                      "data/nanopore_dRNA-ENCFF155CFF/stringtie_filtered.gtf",
+                      "data/nanopore_dRNA_NA12878/stringtie_filtered.gtf",
                       "data/pacbio_ENCFF450VAU/stringtie_filtered.gtf",
                       "data/SRR307903_hisat/stringtie_filtered.gtf"],
                     #   "data/nanopore_cDNA_ENCFF023EXJ/stringtie_filtered.gtf",
                     #   "data/nanopore_dRNA_NA12878/stringtie_filtered.gtf"],
         "gtf_file2": ["data/nanopore_cDNA_ENCFF023EXJ/isoquant_filtered.gtf",
-                      "data/nanopore_dRNA-ENCFF155CFF/isoquant_filtered.gtf",
+                      "data/nanopore_dRNA_NA12878/isoquant_filtered.gtf",
                       "data/pacbio_ENCFF450VAU/isoquant_filtered.gtf",
                       "data/SRR307903_hisat/scallop2_filtered.gtf"],
                     #   "data/nanopore_cDNA_NA12878/isoquant_filtered.gtf", ,
                     #   "data/nanopore_dRNA_NA12878/isoquant_filtered.gtf"],
         "tmap_file1":  ["data/nanopore_cDNA_ENCFF023EXJ/stringtie.stringtie_filtered.gtf.tmap",
-                        "data/nanopore_dRNA-ENCFF155CFF/stringtie.stringtie_filtered.gtf.tmap",
+                        "data/nanopore_dRNA_NA12878/stringtie.stringtie_filtered.gtf.tmap",
                        "data/pacbio_ENCFF450VAU/stringtie.stringtie_filtered.gtf.tmap",
                        "data/SRR307903_hisat/stringtie.stringtie_filtered.gtf.tmap"],
                     #    "data/nanopore_cDNA_NA12878/stringtie.stringtie_filtered.gtf.tmap",
                     #    "data/nanopore_dRNA_NA12878/stringtie.stringtie_filtered.gtf.tmap"],
         "tmap_file2":  ["data/nanopore_cDNA_ENCFF023EXJ/isoquant.isoquant_filtered.gtf.tmap",   
-                        "data/nanopore_dRNA-ENCFF155CFF/isoquant.isoquant_filtered.gtf.tmap",
+                        "data/nanopore_dRNA_NA12878/isoquant.isoquant_filtered.gtf.tmap",
                        "data/pacbio_ENCFF450VAU/isoquant.isoquant_filtered.gtf.tmap",
                         "data/SRR307903_hisat/scallop2.scallop2_filtered.gtf.tmap"],
                     #    "data/nanopore_cDNA_NA12878/isoquant.isoquant_filtered.gtf.tmap",
@@ -162,9 +162,9 @@ def init_parallel():
                    row["ref_anno_gtf"])
         dataset_tasks.append(row_data)
     
-    # dataset_tasks = dataset_tasks[3:5]
+    # dataset_tasks = [dataset_tasks[1]] #[:5]
     # Process datasets in parallel (max 2 concurrent datasets to avoid overwhelming system)
-    max_concurrent_datasets = min(2, len(dataset_tasks))
+    max_concurrent_datasets = min(4, len(dataset_tasks))
     print(f"🚀 Starting parallel processing with {max_concurrent_datasets} concurrent datasets...")
     
     with ProcessPoolExecutor(max_workers=max_concurrent_datasets) as executor:

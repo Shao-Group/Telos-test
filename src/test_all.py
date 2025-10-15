@@ -48,6 +48,8 @@ def generate_model_paths(model_folder):
 def test_with_pretrained(prefix, rnaseq_dir, output_dir, bam_file, gtf_file, ref_anno_gtf, tmap_file, pretrained_config_file):
     pretrained_config = load_config(pretrained_config_file)
     pretrained_model_folder = pretrained_config.models_output_dir
+    # if not "drna" in prefix.lower():
+    #     return
     
     output_dir = os.path.join(output_dir, prefix)
     os.makedirs(output_dir, exist_ok=True)
@@ -171,7 +173,8 @@ def test_all_parallel():
                    "cDNA-NA12878", 
                    "dRNA-Hek293T", 
                    "dRNA-ENCFF771DIX",
-                   "dRNA-NA12878",
+                #    "dRNA-NA12878",
+                    "dRNA-ENCFF155CFF",
                    "pacbio_ENCFF694DIE",
                    "pacbio_ENCFF563QZR",
                    "pacbio_ENCFF370NFS", 
@@ -180,7 +183,7 @@ def test_all_parallel():
                    "SRR315334",
                    "SRR534307",
                    "SRR545723",
-                   "SRR307911",
+                #    "SRR307911",
                    "SRR315323",
                    "SRR534319",
                    "SRR534291",
@@ -190,7 +193,8 @@ def test_all_parallel():
                     "data/cv_NA12878_cDNA/NA12878-cDNA.sorted.bam",
                     "data/cv_Hek293T_dRNA/SGNex_Hek293T_dRNA.sorted.bam",
                     "data/cv_ENCFF771DIX_dRNA/dRNA-ENCFF771DIX.sorted.bam",
-                    "data/cv_NA12878_dRNA/NA12878-DirectRNA.sorted.bam",
+                    # "data/cv_NA12878_dRNA/NA12878-DirectRNA.sorted.bam",
+                    "data/cv_ENCFF155CFF_dRNA/dRNA-ENCFF155CFF.sorted.bam",
                     "data/cv_pacbio_ENCFF694DIE/ENCFF694DIE.sorted.bam",
                     "data/cv_pacbio_ENCFF563QZR/ENCFF563QZR.sorted.bam",
                     "data/cv_pacbio_ENCFF370NFS/ENCFF370NFS.sorted.bam",
@@ -199,7 +203,7 @@ def test_all_parallel():
                      "data/cv_SRR315334_hisat/hisat.sort.bam",
                      "data/cv_SRR534307_hisat/hisat.sort.bam",
                      "data/cv_SRR545723_hisat/hisat.sort.bam",
-                     "data/cv_SRR307911_hisat/hisat.sort.bam",
+                     # "data/cv_SRR307911_hisat/hisat.sort.bam",
                      "data/cv_SRR315323_hisat/hisat.sort.bam",
                      "data/cv_SRR534319_hisat/hisat.sort.bam",
                      "data/cv_SRR534291_hisat/hisat.sort.bam",
@@ -209,7 +213,8 @@ def test_all_parallel():
                       "data/cv_NA12878_cDNA/stringtie_filtered.gtf",
                       "data/cv_Hek293T_dRNA/stringtie_filtered.gtf",
                       "data/cv_ENCFF771DIX_dRNA/stringtie_filtered.gtf",
-                      "data/cv_NA12878_dRNA/stringtie_filtered.gtf",
+                      # "data/cv_NA12878_dRNA/stringtie_filtered.gtf",
+                      "data/cv_ENCFF155CFF_dRNA/stringtie_filtered.gtf",
                       "data/cv_pacbio_ENCFF694DIE/stringtie_filtered.gtf",
                       "data/cv_pacbio_ENCFF563QZR/stringtie_filtered.gtf",
                       "data/cv_pacbio_ENCFF370NFS/stringtie_filtered.gtf",                      
@@ -218,7 +223,7 @@ def test_all_parallel():
                       "data/cv_SRR315334_hisat/stringtie_filtered.gtf",
                       "data/cv_SRR534307_hisat/stringtie_filtered.gtf",
                       "data/cv_SRR545723_hisat/stringtie_filtered.gtf",
-                      "data/cv_SRR307911_hisat/stringtie_filtered.gtf",
+                      # "data/cv_SRR307911_hisat/stringtie_filtered.gtf",
                       "data/cv_SRR315323_hisat/stringtie_filtered.gtf",
                       "data/cv_SRR534319_hisat/stringtie_filtered.gtf",
                       "data/cv_SRR534291_hisat/stringtie_filtered.gtf",  
@@ -228,7 +233,8 @@ def test_all_parallel():
                       "data/cv_NA12878_cDNA/isoquant_filtered.gtf",
                       "data/cv_Hek293T_dRNA/isoquant_filtered.gtf",
                       "data/cv_ENCFF771DIX_dRNA/isoquant_filtered.gtf",
-                      "data/cv_NA12878_dRNA/isoquant_filtered.gtf",
+                    #   "data/cv_NA12878_dRNA/isoquant_filtered.gtf",
+                      "data/cv_ENCFF155CFF_dRNA/isoquant_filtered.gtf",
                       "data/cv_pacbio_ENCFF694DIE/isoquant_filtered.gtf",
                       "data/cv_pacbio_ENCFF563QZR/isoquant_filtered.gtf",
                       "data/cv_pacbio_ENCFF370NFS/isoquant_filtered.gtf",
@@ -237,7 +243,7 @@ def test_all_parallel():
                       "data/cv_SRR315334_hisat/scallop2_filtered.gtf",
                       "data/cv_SRR534307_hisat/scallop2_filtered.gtf",
                       "data/cv_SRR545723_hisat/scallop2_filtered.gtf",
-                      "data/cv_SRR307911_hisat/scallop2_filtered.gtf",
+                      # "data/cv_SRR307911_hisat/scallop2_filtered.gtf",
                       "data/cv_SRR315323_hisat/scallop2_filtered.gtf",
                       "data/cv_SRR534319_hisat/scallop2_filtered.gtf",
                       "data/cv_SRR534291_hisat/scallop2_filtered.gtf",  
@@ -247,7 +253,8 @@ def test_all_parallel():
                         "data/cv_NA12878_cDNA/stringtie.stringtie_filtered.gtf.tmap",
                         "data/cv_Hek293T_dRNA/stringtie.stringtie_filtered.gtf.tmap",
                         "data/cv_ENCFF771DIX_dRNA/stringtie.stringtie_filtered.gtf.tmap",
-                        "data/cv_NA12878_dRNA/stringtie.stringtie_filtered.gtf.tmap",
+                        # "data/cv_NA12878_dRNA/stringtie.stringtie_filtered.gtf.tmap",
+                        "data/cv_ENCFF155CFF_dRNA/stringtie.stringtie_filtered.gtf.tmap",
                        "data/cv_pacbio_ENCFF694DIE/stringtie.stringtie_filtered.gtf.tmap",
                        "data/cv_pacbio_ENCFF563QZR/stringtie.stringtie_filtered.gtf.tmap",
                        "data/cv_pacbio_ENCFF370NFS/stringtie.stringtie_filtered.gtf.tmap",
@@ -256,7 +263,7 @@ def test_all_parallel():
                        "data/cv_SRR315334_hisat/stringtie.stringtie_filtered.gtf.tmap",
                        "data/cv_SRR534307_hisat/stringtie.stringtie_filtered.gtf.tmap",
                        "data/cv_SRR545723_hisat/stringtie.stringtie_filtered.gtf.tmap",
-                       "data/cv_SRR307911_hisat/stringtie.stringtie_filtered.gtf.tmap",
+                    #    "data/cv_SRR307911_hisat/stringtie.stringtie_filtered.gtf.tmap",
                        "data/cv_SRR315323_hisat/stringtie.stringtie_filtered.gtf.tmap",
                        "data/cv_SRR534319_hisat/stringtie.stringtie_filtered.gtf.tmap",
                        "data/cv_SRR534291_hisat/stringtie.stringtie_filtered.gtf.tmap",  
@@ -266,7 +273,8 @@ def test_all_parallel():
                         "data/cv_NA12878_cDNA/isoquant.isoquant_filtered.gtf.tmap",
                         "data/cv_Hek293T_dRNA/isoquant.isoquant_filtered.gtf.tmap",
                         "data/cv_ENCFF771DIX_dRNA/isoquant.isoquant_filtered.gtf.tmap",
-                        "data/cv_NA12878_dRNA/isoquant.isoquant_filtered.gtf.tmap",
+                        # "data/cv_NA12878_dRNA/isoquant.isoquant_filtered.gtf.tmap",
+                        "data/cv_ENCFF155CFF_dRNA/isoquant.isoquant_filtered.gtf.tmap",
                         "data/cv_pacbio_ENCFF694DIE/isoquant.isoquant_filtered.gtf.tmap",
                         "data/cv_pacbio_ENCFF563QZR/isoquant.isoquant_filtered.gtf.tmap",
                         "data/cv_pacbio_ENCFF370NFS/isoquant.isoquant_filtered.gtf.tmap",
@@ -275,22 +283,22 @@ def test_all_parallel():
                        "data/cv_SRR315334_hisat/scallop2.scallop2_filtered.gtf.tmap",
                        "data/cv_SRR534307_hisat/scallop2.scallop2_filtered.gtf.tmap",
                        "data/cv_SRR545723_hisat/scallop2.scallop2_filtered.gtf.tmap",
-                       "data/cv_SRR307911_hisat/scallop2.scallop2_filtered.gtf.tmap",
+                    #    "data/cv_SRR307911_hisat/scallop2.scallop2_filtered.gtf.tmap",
                        "data/cv_SRR315323_hisat/scallop2.scallop2_filtered.gtf.tmap",
                        "data/cv_SRR534319_hisat/scallop2.scallop2_filtered.gtf.tmap",
                        "data/cv_SRR534291_hisat/scallop2.scallop2_filtered.gtf.tmap",  
                        "data/cv_SRR387661_hisat/scallop2.scallop2_filtered.gtf.tmap"],
-        "ref_anno_gtf": [GENCODE_REF]*9 + [ENSEMBLE_REF]*10,
+        "ref_anno_gtf": [GENCODE_REF]*9 + [ENSEMBLE_REF]*9,
         
         "pretrained_config1" :  [f"{PROJECT_CONFIG_DIR}/cDNA-ENCFF023EXJ_stringtie_config.pkl"]*3 + 
-                                [f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_stringtie_config.pkl"]*3 + 
+                                [f"{PROJECT_CONFIG_DIR}/dRNA-NA12878_stringtie_config.pkl"]*3 + 
                                 [f"{PROJECT_CONFIG_DIR}/pacbio_ENCFF450VAU_stringtie_config.pkl"]*3 + 
-                                [f"{PROJECT_CONFIG_DIR}/SRR307903_stringtie_config.pkl"]*10,
+                                [f"{PROJECT_CONFIG_DIR}/SRR307903_stringtie_config.pkl"]*9,
 
         "pretrained_config2" :  [f"{PROJECT_CONFIG_DIR}/cDNA-ENCFF023EXJ_isoquant_config.pkl"]*3 + 
-                                [f"{PROJECT_CONFIG_DIR}/dRNA-ENCFF155CFF_isoquant_config.pkl"]*3 + 
+                                [f"{PROJECT_CONFIG_DIR}/dRNA-NA12878_isoquant_config.pkl"]*3 + 
                                 [f"{PROJECT_CONFIG_DIR}/pacbio_ENCFF450VAU_isoquant_config.pkl"]*3 + 
-                                [f"{PROJECT_CONFIG_DIR}/SRR307903_scallop2_config.pkl"]*10
+                                [f"{PROJECT_CONFIG_DIR}/SRR307903_scallop2_config.pkl"]*9
     }
     
 

@@ -34,9 +34,54 @@ def validate_stage2(df_tss, df_tes, project_config, model_type, pretrained_model
     df['min_confidence'] = np.minimum(df['tss_confidence'], df['tes_confidence'])
     df['confidence_product'] = df['tss_confidence'] * df['tes_confidence']
     
+    # Add feature interactions for better transcript prediction
+    # Exon-related interactions
+    if 'exon_count' in df.columns:
+        df['exon_density'] = df['exon_count'] / df['transcript_length'].clip(lower=1)  # Exons per kb
+        df['confidence_exon_interaction'] = df['confidence_product'] * df['exon_count']
+        df['coverage_per_exon'] = df['coverage'] / df['exon_count'].clip(lower=1)
+    
+    if 'total_exon_length' in df.columns and 'exon_count' in df.columns:
+        df['avg_exon_length'] = df['total_exon_length'] / df['exon_count'].clip(lower=1)
+    
+    if 'max_exon_length' in df.columns and 'min_exon_length' in df.columns:
+        df['exon_length_ratio'] = df['max_exon_length'] / df['min_exon_length'].clip(lower=1)
+    
+    # Coverage-transcript interactions
+    df['coverage_length_ratio'] = df['coverage'] / df['transcript_length'].clip(lower=1)
+    df['confidence_coverage_interaction'] = df['confidence_product'] * df['coverage']
+    
+    # TSS/TES confidence interactions
+    df['confidence_sum'] = df['tss_confidence'] + df['tes_confidence']
+    df['confidence_diff'] = abs(df['tss_confidence'] - df['tes_confidence'])
+    
+    # Transcript structure features
+    if 'first_exon_length' in df.columns and 'last_exon_length' in df.columns:
+        df['terminal_exon_ratio'] = df['first_exon_length'] / df['last_exon_length'].clip(lower=1)
+    
+    if 'mean_exon_length' in df.columns and 'transcript_length' in df.columns:
+        df['exon_efficiency'] = df['mean_exon_length'] / df['transcript_length'].clip(lower=1)
+    
+    # Add log transformations for skewed features
+    skewed_features = ['coverage', 'total_reads', 'transcript_length']
+    for feature in skewed_features:
+        if feature in df.columns:
+            df[f'log_{feature}'] = np.log1p(df[feature])
+    
+    # Add exon length entropy (measure of exon length diversity)
+    if all(col in df.columns for col in ['max_exon_length', 'min_exon_length', 'mean_exon_length']):
+        # Calculate coefficient of variation as a proxy for entropy
+        exon_length_cv = (df['max_exon_length'] - df['min_exon_length']) / df['mean_exon_length'].clip(lower=1)
+        df['exon_length_entropy'] = np.log1p(exon_length_cv)
+    
+    # Add additional exon diversity features
+    if 'exon_count' in df.columns and 'total_exon_length' in df.columns:
+        df['exon_length_std'] = np.sqrt(df['exon_length_variance']) if 'exon_length_variance' in df.columns else 0
+        df['exon_length_skewness'] = (df['max_exon_length'] - df['mean_exon_length']) / df['exon_length_std'].clip(lower=1)
+    
 
     X_train, X_test, y_train, y_test, train_mask, test_mask = stratified_split(df, validation_chrom_file=project_config.validation_chromosomes_file, train_chrom_file=project_config.train_chromosomes_file, return_mask=True)
-    
+        
     # MINIMAL MODIFICATION: Better feature selection for stage 2
     # MINIMAL MODIFICATION: Better feature selection for stage 2
     drop = [
