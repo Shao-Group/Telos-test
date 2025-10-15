@@ -1,5 +1,5 @@
 eval "$(conda shell.bash hook)"
-conda activate irtesam-berth
+conda activate berth
 
 python src/train_all_data.py
 python src/test_all.py
