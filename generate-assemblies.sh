@@ -1,7 +1,7 @@
 #!/bin/bash
-ref_genome="/datadisk1/ixk5174/data/long_reads_assembly/human_ref.Gencode.v36/GRCh38.primary_assembly.genome.fa"
-ref_annotation="/datadisk1/ixk5174/project_repo/Telos-test/data/GRCh38_gencode.gtf"
-gtfformat="/datadisk1/ixk5174/tools/rnaseqtools/gtfformat/gtfformat"
+ref_genome="/path/to/GRCh38.primary_assembly.genome.fa"
+ref_annotation="/path/to/GRCh38_gencode.gtf"
+gtfformat="/path/to/gtfformat"
 
 cd $1
 
@@ -50,9 +50,9 @@ echo "Current files:"
 echo $(ls .)
 
 echo "Generating stringtie_filtered.gtf..."
-/datadisk1/ixk5174/tools/stringtie-3.0.0.Linux_x86_64/stringtie -p 8 -L -o stringtie_filtered.gtf "$bam_file"
+/path/to/stringtie -p 8 -L -o stringtie_filtered.gtf "$bam_file"
 # echo "Generating stringtie_all.gtf..."
-# /datadisk1/ixk5174/tools/stringtie-3.0.0.Linux_x86_64/stringtie -p 8 -L -t -o stringtie_all.gtf "$bam_file"
+# /path/to/stringtie -p 8 -L -t -o stringtie_all.gtf "$bam_file"
 
 eval "$(conda shell.bash hook)"
 

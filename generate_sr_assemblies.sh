@@ -1,11 +1,11 @@
 #!/bin/bash
-ref_genome="/datadisk1/ixk5174/data/long_reads_assembly/human_ref.Gencode.v36/GRCh38.primary_assembly.genome.fa"
-ref_annotation="/datadisk1/ixk5174/project_repo/Telos-test/data/GRCh38_ensembl.gtf"
-gtfformat="/datadisk1/ixk5174/tools/rnaseqtools/gtfformat/gtfformat"
+ref_genome="/path/to/GRCh38.primary_assembly.genome.fa"
+ref_annotation="/path/to/GRCh38_ensembl.gtf"
+gtfformat="/path/to/gtfformat"
 
 # Source and destination directories
-encode10_dir="/datadisk1/shared/data/encode10"
-data_dir="/datadisk1/ixk5174/project_repo/Telos-test/data"
+encode10_dir="/path/to/encode10"
+data_dir="/path/to/data"
 
 # Find all SRR directories in ENCODE10
 echo "Finding SRR directories in: $encode10_dir"
@@ -99,7 +99,7 @@ for srr_dir in "${srr_dirs[@]}"; do
     
     # Run StringTie
     echo "Generating stringtie_filtered.gtf..."
-    /datadisk1/ixk5174/tools/stringtie-3.0.0.Linux_x86_64/stringtie -p 8 -o stringtie_filtered.gtf "$bam_file"
+    /path/to/stringtie -p 8 -o stringtie_filtered.gtf "$bam_file"
     
     # Activate conda environment for scallop2
     eval "$(conda shell.bash hook)"

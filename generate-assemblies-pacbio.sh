@@ -1,7 +1,7 @@
 #!/bin/bash
-ref_genome="/datadisk1/ixk5174/data/long_reads_assembly/human_ref.Gencode.v36/GRCh38.primary_assembly.genome.fa"
-ref_annotation="/datadisk1/ixk5174/project_repo/Telos-test/data/GRCh38_gencode.gtf"
-gtfformat="/datadisk1/ixk5174/tools/rnaseqtools/gtfformat/gtfformat"
+ref_genome="/path/to/GRCh38.primary_assembly.genome.fa"
+ref_annotation="/path/to/GRCh38_gencode.gtf"
+gtfformat="/path/to/gtfformat"
 
 cd $1
 
@@ -50,9 +50,9 @@ echo "Current files:"
 echo $(ls .)
 
 echo "Generating stringtie_filtered.gtf..."
-/datadisk1/ixk5174/tools/stringtie-3.0.0.Linux_x86_64/stringtie -p 8 -L -o stringtie_filtered.gtf "$bam_file"
+/path/to/stringtie -p 8 -L -o stringtie_filtered.gtf "$bam_file"
 # echo "Generating stringtie_all.gtf..."
-# /datadisk1/ixk5174/tools/stringtie-3.0.0.Linux_x86_64/stringtie -p 8 -L -t -o stringtie_all.gtf "$bam_file"
+# /path/to/stringtie -p 8 -L -t -o stringtie_all.gtf "$bam_file"
 
 eval "$(conda shell.bash hook)"
 
@@ -60,11 +60,11 @@ conda activate isoquant
 isoquant_out="isoquant_out"
 # echo "Generating isoquant_all.gtf..."
 
-# isoquant.py --threads 32 --model_construction_strategy all --reference $ref_genome --bam "$bam_file" --data_type pacbio -o $isoquant_out
+isoquant.py --threads 32 --model_construction_strategy all --reference $ref_genome --bam "$bam_file" --data_type pacbio -o $isoquant_out
 
-# cp "$isoquant_out/OUT/OUT.transcript_models.gtf" "isoquant_all.gtf"
-# cp "$isoquant_out/OUT/OUT.transcript_model_tpm.tsv" "isoquant_all.tpm"
-# rm -r $isoquant_out
+cp "$isoquant_out/OUT/OUT.transcript_models.gtf" "isoquant_all.gtf"
+cp "$isoquant_out/OUT/OUT.transcript_model_tpm.tsv" "isoquant_all.tpm"
+rm -r $isoquant_out
 
 echo "Generating isoquant_filtered.gtf..."
 isoquant.py --threads 32 --reference $ref_genome --bam "$bam_file" --data_type pacbio -o $isoquant_out
