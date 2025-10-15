@@ -15,3 +15,4 @@ project_config/*pkl
 comp_analysis/
 plots_individual/
 src/comparative_analysis.py
+plots_individual_bc/
