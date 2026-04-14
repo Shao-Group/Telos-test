@@ -25,8 +25,10 @@
 #   ANNOTATION_PROFILE=all ./scripts/run_all_fastq_bundles.sh
 #   DRY_RUN=1 ./scripts/run_all_fastq_bundles.sh
 #   SKIP_EXISTING=1 ./scripts/run_all_fastq_bundles.sh
+#   REGENERATE=1 ./scripts/run_all_fastq_bundles.sh      # force clean rerun per sample
 #   ONLY=sr ./scripts/run_all_fastq_bundles.sh          # sr | cdna | drna | pacbio
 #   HISAT2_STRANDNESS=RF THREADS=16 ./scripts/run_all_fastq_bundles.sh
+#   ISOQUANT_CONDA_ENV=isoquant ISOQUANT_SCRIPT=isoquant.py ./scripts/run_all_fastq_bundles.sh
 #
 # Requires: conda env CONDA_ENV; run scripts/prepare_all_genome_annotations.sh (or genome_prepare per profile).
 
@@ -38,12 +40,23 @@ cd "${REPO_ROOT}"
 export PYTHONPATH="${REPO_ROOT}/src"
 
 CONDA_ENV="${CONDA_ENV:-irtesam-berth}"
+ISOQUANT_CONDA_ENV="${ISOQUANT_CONDA_ENV:-}"
+ISOQUANT_SCRIPT="${ISOQUANT_SCRIPT:-}"
 FASTQ_ROOT="${FASTQ_ROOT:-${REPO_ROOT}/fastq}"
+
+IQ_ARGS=( )
+if [[ -n "${ISOQUANT_CONDA_ENV}" ]]; then
+  IQ_ARGS+=( --isoquant-conda-env "${ISOQUANT_CONDA_ENV}" )
+fi
+if [[ -n "${ISOQUANT_SCRIPT}" ]]; then
+  IQ_ARGS+=( --isoquant-script "${ISOQUANT_SCRIPT}" )
+fi
 
 THREADS="${THREADS:-8}"
 THREADS_ISO="${THREADS_ISO:-32}"
 ONLY="${ONLY:-all}"
 ANNOTATION_PROFILE="${ANNOTATION_PROFILE:-gencode}"
+REGENERATE="${REGENERATE:-}"
 # Default RF when unset; use HISAT2_STRANDNESS= to align short reads unstranded (- only, not :-).
 HISAT2_STRANDNESS="${HISAT2_STRANDNESS-RF}"
 
@@ -121,6 +134,8 @@ if [[ "${ANNOTATION_PROFILE}" == refseq ]]; then
   REFSEQ_GFFCOMPARE_GTF="${REPO_ROOT}/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf"
   ensure_refseq_gffcompare_gtf "${REF_GTF}" "${REFSEQ_GFFCOMPARE_GTF}"
   PIPELINE_REF_GTF="${REFSEQ_GFFCOMPARE_GTF}"
+  # Keep bundle metadata consistent with the annotation used to generate gffcompare outputs.
+  MANIFEST_REF_GTF="${REFSEQ_GFFCOMPARE_GTF}"
 fi
 
 is_complete_workdir() {
@@ -150,6 +165,11 @@ run_pipeline() {
   local preset="${1:-}"
   shift || true
   mkdir -p "${work_dir}"
+  if [[ -n "${REGENERATE}" ]] && [[ -d "${work_dir}" ]]; then
+    echo "[regen] removing existing work dir ${work_dir}"
+    rm -rf "${work_dir}"
+    mkdir -p "${work_dir}"
+  fi
   # If a previous run died mid-way, keep BAM/assembly outputs but wipe partial gffcompare outputs.
   if [[ -d "${work_dir}/gffcmp" ]] && [[ ! -f "${work_dir}/bundle_manifest.yaml" ]]; then
     rm -rf "${work_dir}/gffcmp"
@@ -217,7 +237,8 @@ echo "REF_GTF=${REF_GTF}"
 echo "PIPELINE_REF_GTF=${PIPELINE_REF_GTF}"
 echo "HISAT2_INDEX=${HISAT2_INDEX}"
 echo "BUNDLE_ROOT=${BUNDLE_ROOT}"
-echo "ONLY=${ONLY} SKIP_EXISTING=${SKIP_EXISTING:-} DRY_RUN=${DRY_RUN:-}"
+echo "CONDA_ENV=${CONDA_ENV} ISOQUANT_CONDA_ENV=${ISOQUANT_CONDA_ENV:-} ISOQUANT_SCRIPT=${ISOQUANT_SCRIPT:-}"
+echo "ONLY=${ONLY} SKIP_EXISTING=${SKIP_EXISTING:-} REGENERATE=${REGENERATE:-} DRY_RUN=${DRY_RUN:-}"
 echo ""
 
 # --- Short reads (paired dirs under fastq/sr/SRR*) ---
@@ -242,7 +263,8 @@ if should_run sr; then
       "${hs_args[@]}" \
       --threads-align "${THREADS}" \
       --threads-assembly "${THREADS}" \
-      --threads-isoquant "${THREADS_ISO}"
+      --threads-isoquant "${THREADS_ISO}" \
+      "${IQ_ARGS[@]}"
     require_manifest "${work}" "${srr}" hisat2
     echo ""
   done
@@ -270,7 +292,8 @@ if should_run cdna; then
       --ref-gtf "${PIPELINE_REF_GTF}" \
       --threads-align "${THREADS}" \
       --threads-assembly "${THREADS}" \
-      --threads-isoquant "${THREADS_ISO}"
+      --threads-isoquant "${THREADS_ISO}" \
+      "${IQ_ARGS[@]}"
     require_manifest "${work}" "${sid}" minimap2
     echo ""
   done
@@ -298,7 +321,8 @@ if should_run drna; then
       --ref-gtf "${PIPELINE_REF_GTF}" \
       --threads-align "${THREADS}" \
       --threads-assembly "${THREADS}" \
-      --threads-isoquant "${THREADS_ISO}"
+      --threads-isoquant "${THREADS_ISO}" \
+      "${IQ_ARGS[@]}"
     require_manifest "${work}" "${sid}" minimap2
     echo ""
   done
@@ -325,7 +349,8 @@ if should_run pacbio; then
       --ref-gtf "${PIPELINE_REF_GTF}" \
       --threads-align "${THREADS}" \
       --threads-assembly "${THREADS}" \
-      --threads-isoquant "${THREADS_ISO}"
+      --threads-isoquant "${THREADS_ISO}" \
+      "${IQ_ARGS[@]}"
     require_manifest "${work}" "${sid}" minimap2
     echo ""
   done

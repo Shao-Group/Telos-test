@@ -87,6 +87,8 @@ class RnaseqToolConfig:
     """Executable paths and runtime defaults."""
 
     conda_env: str = "irtesam-berth"
+    # Optional: run IsoQuant in a different env (e.g. when main env has broken sqlite3).
+    isoquant_conda_env: Optional[str] = None
 
     stringtie: Path = field(
         default_factory=lambda: Path(
@@ -113,7 +115,7 @@ class RnaseqToolConfig:
     )
     samtools: str = field(default_factory=_default_samtools)
 
-    isoquant_script: str = "isoquant.py"
+    isoquant_script: str = "isoquant"
     scallop2_cmd: str = "scallop2"
 
     gtfformat: Optional[Path] = None

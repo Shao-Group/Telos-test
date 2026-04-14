@@ -1,4 +1,4 @@
-src/__pycache__/
+*/__pycache__/
 src/utils/__pycache__/
 data/
 out/
@@ -16,3 +16,10 @@ comp_analysis/
 plots_individual/
 src/comparative_analysis.py
 plots_individual_bc/
+docs/
+examples/
+fastq/
+genome/
+runs/
+schemas/
+tmp/

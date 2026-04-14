@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -100,6 +101,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Conda environment for all tools (default: irtesam-berth).",
     )
     run.add_argument(
+        "--isoquant-conda-env",
+        type=str,
+        default=None,
+        help="Conda env for IsoQuant only (nanopore/pacbio). "
+        "Default: $ISOQUANT_CONDA_ENV, else same as --conda-env. "
+        "Use when main env has broken sqlite3 (ImportError sqlite3_deserialize).",
+    )
+    run.add_argument(
+        "--isoquant-script",
+        type=str,
+        default=None,
+        help="IsoQuant executable name in that env (e.g. isoquant or isoquant.py). "
+        "Default: $ISOQUANT_SCRIPT, else 'isoquant'.",
+    )
+    run.add_argument(
         "--samtools",
         type=Path,
         default=None,
@@ -192,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
     mm_extra = list(args.minimap2_extra) if args.minimap2_extra else []
     hs_extra = list(args.hisat2_extra) if args.hisat2_extra is not None else None
 
+    isoq_env = args.isoquant_conda_env or os.environ.get("ISOQUANT_CONDA_ENV")
+    isoq_script = args.isoquant_script or os.environ.get("ISOQUANT_SCRIPT")
     cfg_kw: dict = dict(
         conda_env=args.conda_env,
         threads_align=args.threads_align,
@@ -205,6 +223,10 @@ def main(argv: list[str] | None = None) -> int:
         hisat2_extra_args=hs_extra if hs_extra is not None else RnaseqToolConfig().hisat2_extra_args,
         gtfformat=args.gtfformat,
     )
+    if isoq_env:
+        cfg_kw["isoquant_conda_env"] = isoq_env
+    if isoq_script:
+        cfg_kw["isoquant_script"] = isoq_script
     if args.samtools is not None:
         cfg_kw["samtools"] = str(args.samtools.resolve())
     cfg = RnaseqToolConfig(**cfg_kw)

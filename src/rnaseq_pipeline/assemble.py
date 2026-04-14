@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import shutil
 from pathlib import Path
 from typing import List, Optional
@@ -61,7 +62,8 @@ def _run_isoquant_once(
     ]
     if extra_args:
         cmd.extend(extra_args)
-    conda_run_cmd(cfg.conda_env, cmd, cwd=work_dir, check=True)
+    iq_env = cfg.isoquant_conda_env or cfg.conda_env
+    conda_run_cmd(iq_env, cmd, cwd=work_dir, check=True)
 
 
 def _copy_isoquant_gtf_tpm(work_isoquant: Path, dest_gtf: Path, dest_tpm: Path) -> None:
@@ -121,6 +123,15 @@ def run_scallop2(
     *,
     work_dir: Path,
 ) -> Path:
-    cmd = [cfg.scallop2_cmd, "-i", str(bam), "-o", str(out_gtf)]
-    conda_run_cmd(cfg.conda_env, cmd, cwd=work_dir, check=True)
+    # Scallop2 can emit verbose progress to stdout/stderr; keep run logs readable.
+    log_path = work_dir / "logs" / "scallop2.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = (
+        f"set -euo pipefail; "
+        f"{shlex.quote(cfg.scallop2_cmd)} "
+        f"-i {shlex.quote(str(bam))} "
+        f"-o {shlex.quote(str(out_gtf))} "
+        f"> {shlex.quote(str(log_path))} 2>&1"
+    )
+    conda_run_cmd(cfg.conda_env, ["bash", "-lc", cmd], cwd=work_dir, check=True)
     return out_gtf
