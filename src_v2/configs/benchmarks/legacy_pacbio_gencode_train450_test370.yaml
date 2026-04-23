@@ -1,0 +1,57 @@
+# Benchmark: legacy PacBio folders under data/ — train ENCFF450VAU (stringtie filtered), test ENCFF370NFS.
+#
+# Reference annotation: data/GRCh38_gencode.gtf (full GENCODE GRCh38; matches legacy train_all_data / test_all layout).
+#
+# Run from repository root (paths are relative to cwd):
+#   cd /path/to/Telos-test
+#   PYTHONPATH=src_v2 python -m telos_v2.cli benchmark \
+#     --config src_v2/configs/benchmarks/legacy_pacbio_gencode_train450_test370.yaml \
+#     --outdir runs/benchmark_legacy_pacbio_smoke
+#
+# Requires: conda env with pysam, sklearn, xgboost, lightgbm, pandas, pyyaml.
+# Optional: set analysis.pr_vs_baseline.enabled true if gffcompare is on PATH (slower).
+
+generated_by: hand-written
+schema_version: 3
+
+train:
+  mode: run
+  bam: data/pacbio_ENCFF450VAU/ENCFF450VAU.sorted.bam
+  gtf: data/pacbio_ENCFF450VAU/stringtie_filtered.gtf
+  ref_gtf: data/GRCh38_gencode.gtf
+  tmap: data/pacbio_ENCFF450VAU/stringtie.stringtie_filtered.gtf.tmap
+  config: src_v2/configs/stage1.defaults.yaml
+
+tests:
+  - id: ENCFF370NFS__stringtie
+    assembler_id: stringtie
+    bam: data/cv_pacbio_ENCFF370NFS/ENCFF370NFS.sorted.bam
+    gtf: data/cv_pacbio_ENCFF370NFS/stringtie_filtered.gtf
+    ref_gtf: data/GRCh38_gencode.gtf
+    tmap: data/cv_pacbio_ENCFF370NFS/stringtie.stringtie_filtered.gtf.tmap
+    config: src_v2/configs/stage1.defaults.yaml
+
+  - id: ENCFF370NFS__isoquant
+    assembler_id: isoquant
+    bam: data/cv_pacbio_ENCFF370NFS/ENCFF370NFS.sorted.bam
+    gtf: data/cv_pacbio_ENCFF370NFS/isoquant_filtered.gtf
+    ref_gtf: data/GRCh38_gencode.gtf
+    tmap: data/cv_pacbio_ENCFF370NFS/isoquant.isoquant_filtered.gtf.tmap
+    config: src_v2/configs/stage1.defaults.yaml
+
+execution:
+  stop_on_error: false
+
+analysis:
+  enabled: true
+  benchmark_mode: minimal
+  debug:
+    keep_pr_work: false
+  pr_vs_baseline:
+    enabled: true
+    measure: cov
+    plot: false
+    filter_validation_chroms: true
+    chromosomes_file: null
+    save_pr_tables: true
+    gffcompare_bin: /datadisk1/shared/tools/gffcompare/gffcompare-0.11.2.Linux_x86_64/gffcompare

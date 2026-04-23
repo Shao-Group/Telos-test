@@ -1,0 +1,40 @@
+stage1:
+  training:
+    site_label_tolerance_bp: 50
+    # Train chromosomes for Stage I and Stage II eval (e.g. chr1–chr10); remaining chroms = validation.
+    split_policy: chr1-10
+    random_state: 42
+    random_forest:
+      n_estimators: 300
+      max_depth: null
+      max_features: sqrt
+      n_jobs: -1
+      class_weight: balanced_subsample
+    # Stage I XGBoost (legacy project_config/xgboost_config.yaml-style keys)
+    xgboost:
+      n_estimators: 300
+      max_depth: 6
+      learning_rate: 0.1
+      subsample: 0.8
+      colsample_bytree: 0.8
+      reg_lambda: 3
+      reg_alpha: 0.5
+      n_jobs: 8
+    # Stage II LightGBM thread count (-1 = all cores; use a small integer on shared clusters)
+    lightgbm:
+      n_jobs: -1
+  feature_extraction:
+    window_size: 100
+    density_window: 100
+    coverage_window: 100
+    soft_clip_window: 10
+    min_mapq: 10
+    splice_site_window: 300
+    gradient_analysis_range: 100
+    extended_window: 1000
+    # Process pool over candidate sites (one BAM handle per worker); mirrors legacy extract_features.py.
+    parallel: true
+    parallel_min_sites: 50
+    n_workers: null # null -> min(CPU count, 8)
+  features:
+    k_values: [3]

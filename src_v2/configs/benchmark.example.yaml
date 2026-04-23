@@ -1,0 +1,45 @@
+train:
+  # mode: run | skip
+  mode: run
+  bam: /path/to/train.bam
+  gtf: /path/to/train.gtf
+  ref_gtf: /path/to/reference.gtf
+  tmap: /path/to/train.gffcompare.tmap
+  config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  # outdir: /custom/train/outdir
+  # If mode=skip, provide model_dir instead:
+  # model_dir: /path/to/existing/models
+
+tests:
+  - id: test_sample_1
+    bam: /path/to/test1.bam
+    gtf: /path/to/test1.gtf
+    ref_gtf: /path/to/reference.gtf
+    tmap: /path/to/test1.gffcompare.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+    # outdir: /custom/test1/outdir
+  - id: test_sample_2
+    bam: /path/to/test2.bam
+    gtf: /path/to/test2.gtf
+    ref_gtf: /path/to/reference.gtf
+    tmap: /path/to/test2.gffcompare.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+
+execution:
+  stop_on_error: false
+
+analysis:
+  # minimal: metrics in benchmark_summary.csv only (PR computed in a temp workdir).
+  # full: persistent reports/pr/work_* + optional save_pr_tables / plot.
+  enabled: true
+  benchmark_mode: minimal
+  debug:
+    keep_pr_work: false
+  pr_vs_baseline:
+    enabled: true
+    measure: cov
+    plot: false
+    filter_validation_chroms: true
+    chromosomes_file: null
+    save_pr_tables: false
+    gffcompare_bin: null

@@ -1,0 +1,79 @@
+train:
+  mode: run
+  bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR307903/align/aln.sorted.bam
+  gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR307903/stringtie.gtf
+  ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+  tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR307903/stringtie.stringtie.gtf.tmap
+  config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  outdir: /datadisk1/ixk5174/project_repo/Telos-test/runs/benchmarks/sr_refseq_train_SRR307903/train
+
+tests:
+  - id: SRR307911
+    bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR307911/align/aln.sorted.bam
+    gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR307911/stringtie.gtf
+    ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+    tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR307911/stringtie.stringtie.gtf.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  - id: SRR315323
+    bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR315323/align/aln.sorted.bam
+    gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR315323/stringtie.gtf
+    ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+    tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR315323/stringtie.stringtie.gtf.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  - id: SRR315334
+    bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR315334/align/aln.sorted.bam
+    gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR315334/stringtie.gtf
+    ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+    tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR315334/stringtie.stringtie.gtf.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  - id: SRR387661
+    bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR387661/align/aln.sorted.bam
+    gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR387661/stringtie.gtf
+    ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+    tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR387661/stringtie.stringtie.gtf.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  - id: SRR534291
+    bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR534291/align/aln.sorted.bam
+    gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR534291/stringtie.gtf
+    ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+    tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR534291/stringtie.stringtie.gtf.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  - id: SRR534307
+    bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR534307/align/aln.sorted.bam
+    gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR534307/stringtie.gtf
+    ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+    tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR534307/stringtie.stringtie.gtf.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  - id: SRR534319
+    bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR534319/align/aln.sorted.bam
+    gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR534319/stringtie.gtf
+    ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+    tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR534319/stringtie.stringtie.gtf.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  - id: SRR545695
+    bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR545695/align/aln.sorted.bam
+    gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR545695/stringtie.gtf
+    ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+    tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR545695/stringtie.stringtie.gtf.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+  - id: SRR545723
+    bam: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR545723/align/aln.sorted.bam
+    gtf: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR545723/stringtie.gtf
+    ref_gtf: /datadisk1/ixk5174/project_repo/Telos-test/genome/refseq/GCF_000001405.40_GRCh38.p14_genomic.gffcmp.gtf
+    tmap: /datadisk1/ixk5174/project_repo/Telos-test/data/bundles/GRCh38_refseq_p14/sr/SRR545723/stringtie.stringtie.gtf.tmap
+    config: /datadisk1/ixk5174/project_repo/Telos-test/src_v2/configs/stage1.defaults.yaml
+
+execution:
+  stop_on_error: false
+
+analysis:
+  enabled: true
+  pr_vs_baseline:
+    enabled: true
+    measure: cov
+    plot: true
+    filter_validation_chroms: true
+    chromosomes_file: null
+    save_pr_tables: true
+    gffcompare_bin: null
+    gtfcuff_bin: null
