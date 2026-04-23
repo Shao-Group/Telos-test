@@ -1,4 +1,6 @@
-"""Evaluation helpers: PR curves vs abundance baselines (gtfcuff-style ranking)."""
+"""
+Evaluation helpers: sklearn PR diagnostics, abundance-baseline PR math, and gffcompare transcript PR.
+"""
 
 from telos_v2.evaluation.pr_ranking import (
     PRCurve,
@@ -8,9 +10,7 @@ from telos_v2.evaluation.pr_ranking import (
     run_transcript_pr_benchmark_artifacts,
     site_pr_vs_baseline,
     transcript_pr_vs_baseline_from_files,
-    write_pr_comparison_csv,
     write_pr_comparison_outputs,
-    write_pr_comparison_tsv,
 )
 
 __all__ = [
@@ -21,7 +21,5 @@ __all__ = [
     "run_transcript_pr_benchmark_artifacts",
     "site_pr_vs_baseline",
     "transcript_pr_vs_baseline_from_files",
-    "write_pr_comparison_csv",
     "write_pr_comparison_outputs",
-    "write_pr_comparison_tsv",
 ]

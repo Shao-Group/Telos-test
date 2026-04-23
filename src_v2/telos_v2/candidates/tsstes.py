@@ -1,17 +1,31 @@
+"""
+Parse TSSTES-style text lines into :class:`~telos_v2.candidates.extract.CandidateSite` rows.
+
+Used when consuming output that looks like ``gtfformat TSSTES`` (site type, chrom, pos, strand counts).
+"""
+
 from __future__ import annotations
 
 from telos_v2.candidates.extract import CandidateSite
 
-# TSSTES lines have no per-transcript id; match legacy extract_features.load_candidate_sites.
+# TSSTES stream lines do not carry transcript_id; use a constant placeholder in CandidateSite rows.
 _TSSTES_TRANSCRIPT_PLACEHOLDER = "."
 
 
 def parse_tsstes_output(text: str) -> list[CandidateSite]:
     """
-    Parse stdout of `gtfformat TSSTES <gtf>`.
+    Parse whitespace-separated TSSTES lines from ``text`` (e.g. subprocess stdout).
 
-    Each line: TSS|TES <chrom> <pos> <pos_strand_count> <neg_strand_count>
-    Strand is inferred like legacy code: tie -> emit both + and -.
+    Expected columns per line: ``<TSS|TES> <chrom> <pos> <plus_strand_count> <minus_strand_count>``.
+
+    Strand selection:
+
+    - If plus-count > minus-count → strand ``+``.
+    - If plus-count < minus-count → strand ``-``.
+    - If tied → emit **two** :class:`CandidateSite` rows at the same locus, one ``+`` and one ``-``.
+
+    Invalid lines (too few tokens, bad ints, wrong site type) are skipped. Returns TSS sites followed
+    by TES sites (each group in discovery order, not sorted by coordinate).
     """
     tss_sites: list[CandidateSite] = []
     tes_sites: list[CandidateSite] = []

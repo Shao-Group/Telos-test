@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import shutil
 import unittest
 
 import numpy as np
 
 from telos_v2.evaluation.transcript_pr_pipeline import (
-    _DEFAULT_GFFCOMPARE,
     parse_gtfcuff_roc_stdout,
     resolve_gffcompare_executable,
 )
@@ -17,12 +17,10 @@ class TestTranscriptPRPipeline(unittest.TestCase):
     def test_resolve_gffcompare_explicit(self) -> None:
         self.assertEqual(resolve_gffcompare_executable("/bin/true"), "/bin/true")
 
-    def test_resolve_gffcompare_default_when_present(self) -> None:
-        if _DEFAULT_GFFCOMPARE.is_file():
-            self.assertEqual(
-                resolve_gffcompare_executable(None),
-                str(_DEFAULT_GFFCOMPARE),
-            )
+    def test_resolve_gffcompare_uses_path_when_on_path(self) -> None:
+        which = shutil.which("gffcompare")
+        if which:
+            self.assertEqual(resolve_gffcompare_executable(None), which)
 
     def test_parse_gtfcuff_roc_stdout(self) -> None:
         text = """

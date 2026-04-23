@@ -1,1 +1,1 @@
-"""Candidate extraction for Telos v2."""
+"""Candidate site extraction and loading from GTF (TSS/TES per transcript)."""

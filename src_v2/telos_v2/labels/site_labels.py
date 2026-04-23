@@ -1,3 +1,7 @@
+"""
+Stage I site labeling: build reference TSS/TES from a reference GTF and label candidate rows by proximity.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,7 +13,12 @@ from telos_v2.candidates.extract import extract_candidate_sites_from_gtf
 
 
 def normalize_chrom_name(chrom: object) -> str:
-    """Match legacy split style: always use a literal 'chr' prefix."""
+    """
+    Normalize contig names to ``chr*`` form for joins between BAM, GTF, and coverage tables.
+
+    If the string already starts with ``chr`` (case-insensitive), lowercases that prefix to ``chr``
+    and keeps the remainder; otherwise prepends ``chr``.
+    """
     s = str(chrom).strip()
     if not s:
         return s
@@ -34,6 +43,30 @@ def reference_sites_from_gtf(ref_gtf: Path) -> pd.DataFrame:
             "strand": [s.strand for s in sites],
         }
     )
+
+
+def novel_reference_sites_from_gtf(ref_gtf: Path, *, novel_prefix: str = "NOVEL_TX_") -> pd.DataFrame:
+    """
+    Reference TSS/TES for transcripts tagged as novel in the augmented reference GTF.
+
+    Novel transcripts are identified by ``transcript_id`` starting with ``novel_prefix``.
+    """
+    out: list[dict[str, object]] = []
+    sites = extract_candidate_sites_from_gtf(ref_gtf)
+    for s in sites:
+        if not str(s.transcript_id).startswith(novel_prefix):
+            continue
+        out.append(
+            {
+                "site_type": s.site_type,
+                "chrom": s.chrom,
+                "position": int(s.position),
+                "strand": s.strand,
+            }
+        )
+    if not out:
+        return pd.DataFrame(columns=["site_type", "chrom", "position", "strand"])
+    return pd.DataFrame(out)
 
 
 def label_sites_by_proximity(

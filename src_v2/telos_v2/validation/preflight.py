@@ -1,17 +1,26 @@
+"""
+Fail-fast validation of filesystem inputs before expensive BAM/GTF work.
+
+Training and prediction call these checks after config load so missing indices or models surface
+with clear :class:`PreflightError` messages. :class:`RunLayout` standardizes output subdirectory names.
+"""
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
 
 
 class PreflightError(RuntimeError):
-    """Raised when required inputs fail validation."""
+    """Raised when a required path, index, or model artifact is missing or invalid."""
 
 
 @dataclass(frozen=True)
 class RunLayout:
+    """Absolute paths for a standard Telos run directory tree under ``root``."""
+
     root: Path
     models_dir: Path
     predictions_dir: Path
@@ -20,7 +29,19 @@ class RunLayout:
     debug_dir: Path
 
 
-def ensure_run_layout(outdir: Path, save_intermediates: bool = False) -> RunLayout:
+def ensure_run_layout(
+    outdir: Path, save_intermediates: bool = False, create_aux_dirs: bool = True
+) -> RunLayout:
+    """
+    Create output subdirectories and return their paths.
+
+    Always creates ``models/`` and ``predictions/``. If ``create_aux_dirs``, also creates
+    ``filtered/`` and ``reports/``. If ``save_intermediates``, creates ``debug/`` for optional
+    dumps during training.
+
+    Returns:
+        :class:`RunLayout` with resolved absolute paths.
+    """
     root = outdir.resolve()
     models_dir = root / "models"
     predictions_dir = root / "predictions"
@@ -28,8 +49,11 @@ def ensure_run_layout(outdir: Path, save_intermediates: bool = False) -> RunLayo
     reports_dir = root / "reports"
     debug_dir = root / "debug"
 
-    for d in (models_dir, predictions_dir, filtered_dir, reports_dir):
+    for d in (models_dir, predictions_dir):
         d.mkdir(parents=True, exist_ok=True)
+    if create_aux_dirs:
+        for d in (filtered_dir, reports_dir):
+            d.mkdir(parents=True, exist_ok=True)
     if save_intermediates:
         debug_dir.mkdir(parents=True, exist_ok=True)
 
@@ -44,6 +68,7 @@ def ensure_run_layout(outdir: Path, save_intermediates: bool = False) -> RunLayo
 
 
 def _validate_file_exists(path: Path, label: str) -> None:
+    """Require ``path`` to exist and be a regular file; else raise :class:`PreflightError`."""
     if not path.exists():
         raise PreflightError(f"{label} not found: {path}")
     if not path.is_file():
@@ -51,19 +76,25 @@ def _validate_file_exists(path: Path, label: str) -> None:
 
 
 def validate_input_file(path: Path, label: str) -> None:
+    """Public wrapper to assert an arbitrary input file exists (same rules as ``_validate_file_exists``)."""
     _validate_file_exists(path, label)
 
 
 def validate_input_gtf(gtf_path: Path) -> None:
+    """Validate ``gtf_path`` using :func:`_validate_gtf_format` (existence + minimal GTF structure)."""
     _validate_gtf_format(gtf_path)
 
 
 def _validate_gtf_format(gtf_path: Path) -> None:
     """
-    Lightweight GTF sanity check:
-    - file exists
-    - at least one non-comment record
-    - first non-comment record has >= 9 tab-separated fields
+    Lightweight GTF sanity check without parsing attributes:
+
+    - Path exists and is a file.
+    - At least one non-empty, non-``#`` line exists.
+    - The first such line splits to at least nine tab columns (GTF9 convention).
+
+    Raises:
+        PreflightError: On any violation (empty file, malformed first record, etc.).
     """
     _validate_file_exists(gtf_path, "GTF")
     non_comment_seen = False
@@ -84,7 +115,9 @@ def _validate_gtf_format(gtf_path: Path) -> None:
 
 
 def _candidate_bam_indices(bam_path: Path) -> Iterable[Path]:
-    # Common index naming variants.
+    """
+    Yield likely BAM index paths (``.bai`` / ``.csi``) for both ``name.bam.bai`` and ``name.bai`` styles.
+    """
     yield bam_path.with_suffix(bam_path.suffix + ".bai")  # sample.bam.bai
     yield bam_path.with_suffix(".bai")  # sample.bai
     yield bam_path.with_suffix(bam_path.suffix + ".csi")  # sample.bam.csi
@@ -92,6 +125,12 @@ def _candidate_bam_indices(bam_path: Path) -> Iterable[Path]:
 
 
 def _validate_bam_and_index(bam_path: Path) -> None:
+    """
+    Assert BAM exists, suffix is ``.bam``, a sidecar index exists, and pysam reports coordinate sort.
+
+    Opens the BAM with pysam and reads header ``HD:SO``; must be ``coordinate``. Raises
+    :class:`PreflightError` if pysam is missing, the file is not a BAM, or sort order is wrong.
+    """
     _validate_file_exists(bam_path, "BAM")
     if bam_path.suffix.lower() != ".bam":
         raise PreflightError(f"Expected a .bam input: {bam_path}")
@@ -124,27 +163,19 @@ def _validate_bam_and_index(bam_path: Path) -> None:
         raise PreflightError(f"Unable to open/validate BAM: {bam_path}") from exc
 
 
-def _preflight_gtfformat_if_needed(cfg_map: dict[str, Any] | None) -> None:
-    if not cfg_map:
-        cfg_map = {}
-    from telos_v2.backends.gtfformat import GtfformatError
-    from telos_v2.candidates.load import gtfformat_needed_for_run, resolve_gtfformat_for_config
-
-    if not gtfformat_needed_for_run(cfg_map):
-        return
-    try:
-        resolve_gtfformat_for_config(cfg_map)
-    except GtfformatError as exc:
-        raise PreflightError(str(exc)) from exc
-
-
 def run_preflight_train(
     bam: Path,
     gtf: Path,
     ref_gtf: Path,
     tmap: Path | None = None,
-    cfg_map: dict[str, Any] | None = None,
+    cfg_map: dict | None = None,
 ) -> None:
+    """
+    Preflight for training: BAM+index, assembly GTF, reference GTF, non-optional tmap file.
+
+    ``cfg_map`` is accepted for forward compatibility; currently unused. Raises :class:`PreflightError`
+    on first failure.
+    """
     _validate_bam_and_index(bam)
     _validate_gtf_format(gtf)
     _validate_gtf_format(ref_gtf)
@@ -153,15 +184,21 @@ def run_preflight_train(
             "--tmap is required for training (Stage II transcript labels from gffcompare .tmap)."
         )
     _validate_file_exists(tmap, "TMAP")
-    _preflight_gtfformat_if_needed(cfg_map)
+    _ = cfg_map
 
 
 def run_preflight_predict(
     bam: Path,
     gtf: Path,
     model_dir: Path,
-    cfg_map: dict[str, Any] | None = None,
+    cfg_map: dict | None = None,
 ) -> None:
+    """
+    Preflight for prediction: BAM+index, GTF, and every Stage I/II artifact file under ``model_dir``.
+
+    Checks both RF and XGB Stage I bundles for TSS/TES and both Stage II ``.joblib`` plus feature-json
+    sidecars. ``cfg_map`` reserved for future use.
+    """
     from telos_v2.models import (
         STAGE1_BACKENDS,
         stage1_bundle_path,
@@ -186,13 +223,16 @@ def run_preflight_predict(
         j = model_dir / stage2_feature_names_json_for_backend(backend)
         if not j.is_file():
             raise PreflightError(f"Missing Stage II feature list: {j}")
-    _preflight_gtfformat_if_needed(cfg_map)
+    _ = cfg_map
 
 
 def run_preflight_benchmark(config: Path) -> None:
+    """
+    Minimal benchmark config check: path exists, non-empty; if content looks like JSON, parse it.
+
+    Full structural validation happens later via :func:`telos_v2.config_validation.validate_benchmark_config`.
+    """
     _validate_file_exists(config, "Benchmark config")
-    # Lightweight sanity: must be parseable as YAML-like JSON subset.
-    # Full YAML schema validation will be added in a later phase.
     txt = config.read_text(encoding="utf-8", errors="replace").strip()
     if not txt:
         raise PreflightError(f"Benchmark config is empty: {config}")

@@ -1,1 +1,1 @@
-"""Postprocessing utilities (ranking, GTF filtering)."""
+"""Postprocessing: filter GTFs by predicted transcript scores, etc."""

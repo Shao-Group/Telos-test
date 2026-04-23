@@ -1,13 +1,17 @@
 """
 Precision–recall style curves from aligned score arrays (sklearn).
 
-For **benchmark** transcript-level evaluation vs the legacy RNA-seq stack, use
+For **benchmark** transcript-level evaluation that re-runs gffcompare on score-injected GTFs, use
 ``telos_v2.evaluation.transcript_pr_pipeline`` instead: it runs
 ``gtfformat filter-chrom`` (validation split) → ``update-transcript-cov`` → ``gffcompare`` → ``gtfcuff roc`` / ``auc`` so the
-ranking axis matches reference re-annotation (see ``src/generate_roc_data.py``).
+ranking axis matches reference re-annotation.
 
 The helpers here remain useful for synthetic tests or quick merges of a fixed tmap with
 tabular scores; they do not substitute transcript coverage in the assembly GTF.
+
+**Naming:** functions in this module return flat dicts with ``pr_*`` keys for historical CSV consumers.
+The gffcompare-based pipeline (``run_transcript_pr_benchmark`` in ``transcript_pr_pipeline``)
+uses ``transcript_pr_*`` keys when attaching results to benchmark rows.
 """
 
 from __future__ import annotations
@@ -25,7 +29,12 @@ from telos_v2.labels.transcript_labels import load_tmap_labels
 
 @dataclass(frozen=True)
 class PRCurve:
-    """One precision–recall curve (points + scalar AUPR)."""
+    """
+    Precision–recall curve from :func:`sklearn.metrics.precision_recall_curve` plus AUPR.
+
+    ``thresholds`` has length ``len(precision)-1`` in sklearn convention; consumers plotting or
+    exporting should pad or align as in :func:`write_pr_comparison_outputs`.
+    """
 
     precision: np.ndarray
     recall: np.ndarray
@@ -35,7 +44,11 @@ class PRCurve:
 
 @dataclass(frozen=True)
 class PRComparisonResult:
-    """Model vs abundance baseline on the same labeled set."""
+    """
+    Side-by-side PR evaluation for a model score vector and a baseline (e.g. abundance) on identical rows.
+
+    ``y_true``, ``scores_model``, and ``scores_baseline`` are already filtered to finite, aligned rows.
+    """
 
     y_true: np.ndarray
     scores_model: np.ndarray
@@ -48,7 +61,11 @@ class PRComparisonResult:
 
 
 def _pr_curve_from_scores(y_true: np.ndarray, scores: np.ndarray) -> PRCurve:
-    """``scores``: higher = stronger prediction of positive."""
+    """
+    Build :class:`PRCurve` from binary ``y_true`` and real ``scores`` (higher = more confident positive).
+
+    Drops non-finite scores. Raises if no finite rows remain.
+    """
     y = np.asarray(y_true, dtype=int)
     s = np.asarray(scores, dtype=float)
     if y.shape != s.shape:
@@ -73,7 +90,8 @@ def compute_pr_curves_vs_baseline(
     """
     Build PR curves for model scores and baseline scores on the **same rows**.
 
-    Rows with NaN/inf in either score are dropped (aligned mask).
+    Rows with NaN/inf in either score are dropped (aligned mask). Requires at least one positive label
+    in ``y_true`` after filtering so recall is defined.
     """
     y = np.asarray(y_true, dtype=int)
     m = np.asarray(scores_model, dtype=float)
@@ -115,7 +133,9 @@ def transcript_pr_vs_baseline_from_files(
 
     - Labels: ``class_code == '='`` → positive (same as ``load_tmap_labels``).
     - Model score: ``pred_prob`` (higher = better predicted transcript).
-    - Baseline score: ``coverage`` (higher = more abundant), gtfcuff-style ranking signal.
+    - Baseline score: ``abundance_column`` (default ``coverage``), higher = stronger abundance signal.
+
+    Dedupes ``ranked`` and ``cov`` by ``transcript_id`` keeping highest score / abundance per id.
     """
     ranked = pd.read_csv(ranked_tsv, sep="\t")
     if pred_column not in ranked.columns:
@@ -171,8 +191,8 @@ def run_transcript_pr_benchmark_artifacts(
     """
     Compute transcript PR (model vs abundance baseline), write curve TSVs, metrics CSV, optional plot.
 
-    Intended for ``telos_v2 benchmark`` when each test has ``tmap`` and ``cov.tsv`` exists.
-    Returns a flat dict suitable for merging into benchmark result rows.
+    Wraps :func:`transcript_pr_vs_baseline_from_files`, writes TSV/CSV under ``reports_pr_dir`` with
+    ``prefix``, optionally saves matplotlib plot. Returns flat ``pr_*`` keys for benchmark row merge.
     """
     result = transcript_pr_vs_baseline_from_files(
         ranked_tsv,
@@ -214,7 +234,12 @@ def write_pr_comparison_outputs(
     *,
     prefix: str = "pr",
 ) -> tuple[Path, Path, Path]:
-    """Write PR curve points as TSV; write scalar AUPR summary as CSV (metrics-only)."""
+    """
+    Persist model and baseline PR curves as tab-separated ``precision/recall/threshold`` tables.
+
+    Threshold column is padded to match sklearn curve length (first row NaN). Writes two-row summary CSV
+    with AUPR and counts. Returns ``(model_tsv, baseline_tsv, summary_csv)`` paths.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     m_path = out_dir / f"{prefix}_model_pr.tsv"
     b_path = out_dir / f"{prefix}_baseline_pr.tsv"
@@ -260,11 +285,6 @@ def write_pr_comparison_outputs(
     return m_path, b_path, summary
 
 
-# Backwards-compatible aliases
-write_pr_comparison_tsv = write_pr_comparison_outputs
-write_pr_comparison_csv = write_pr_comparison_outputs
-
-
 def plot_pr_comparison(
     result: PRComparisonResult,
     out_path: Path,
@@ -273,7 +293,13 @@ def plot_pr_comparison(
     dpi: int = 120,
 ) -> Path:
     """
-    Save an overlay PR plot (requires matplotlib). Returns ``out_path``.
+    Draw model vs baseline precision–recall with AUPR in legend; axis limits [0,1] × [0,1.05].
+
+    Raises:
+        ImportError: If matplotlib is not installed.
+
+    Returns:
+        Resolved ``out_path`` written as PNG.
     """
     try:
         import matplotlib.pyplot as plt

@@ -1,3 +1,7 @@
+"""
+Filter GTF features to high-confidence transcripts using Stage II ``transcripts.ranked*.tsv`` scores.
+"""
+
 from __future__ import annotations
 
 import re
@@ -10,11 +14,18 @@ _GENE_RE = re.compile(r'gene_id\s+"([^"]+)"')
 
 
 def _extract_attr(attrs: str, pattern: re.Pattern[str]) -> str | None:
+    """Return first regex capture from GTF column 9 ``attrs`` or ``None``."""
     m = pattern.search(attrs)
     return m.group(1) if m else None
 
 
 def _load_kept_transcripts(ranked_tsv: Path, prob_threshold: float) -> set[str]:
+    """
+    ``transcript_id`` set where ``pred_prob >= prob_threshold`` in ranked TSV.
+
+    Raises:
+        ValueError: Missing required columns.
+    """
     df = pd.read_csv(ranked_tsv, sep="\t")
     if "transcript_id" not in df.columns or "pred_prob" not in df.columns:
         raise ValueError("ranked TSV must contain transcript_id and pred_prob columns")
@@ -29,8 +40,20 @@ def filter_gtf_by_transcript_scores(
     prob_threshold: float,
 ) -> tuple[int, int]:
     """
-    Keep transcripts (and children) whose Stage II probability >= threshold.
-    Returns (kept_transcripts, total_transcripts_seen).
+    Two-pass GTF filter: keep transcript features in ``keep_tx`` and any exon/CDS sharing their ids.
+
+    First pass counts transcripts and collects ``gene_id`` for kept transcripts. Second pass writes
+    lines: all genes that still have a kept transcript, all features with ``transcript_id`` in ``keep_tx``,
+    and any feature tied to a kept ``gene_id`` (e.g. exons without transcript_id in attrs — rare).
+
+    Args:
+        in_gtf: Input GTF path.
+        ranked_tsv: Stage II ranked output with ``transcript_id`` and ``pred_prob``.
+        out_gtf: Output path (parent dirs created).
+        prob_threshold: Minimum ``pred_prob`` to retain a transcript.
+
+    Returns:
+        ``(kept_transcript_count, total_transcript_count_seen)`` from the first pass.
     """
     keep_tx = _load_kept_transcripts(ranked_tsv, prob_threshold)
     if not in_gtf.is_file():

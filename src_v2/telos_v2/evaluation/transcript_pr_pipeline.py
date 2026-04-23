@@ -1,19 +1,25 @@
 """
-Transcript-level PR / AUC the same way as legacy ``src/generate_roc_data.py``:
+Transcript-level precision–recall / AUC by re-annotating the assembly with model scores.
 
-1. ``gtfformat update-transcript-cov`` — write model scores into transcript ``coverage`` in the assembly GTF.
-2. ``gffcompare -r <ref.gtf>`` on that GTF — new ``.tmap`` (not the pre-baked bundle tmap).
-3. ``gtfcuff roc`` / ``gtfcuff auc`` on that tmap with ``ref-size`` = multi-exon reference transcript count.
+Pipeline steps:
 
-Baseline: gffcompare on the **original** assembly GTF (coverage from the assembler), then gtfcuff.
+1. ``gtfformat update-transcript-cov`` (Python backend) — copy model scores into each transcript’s
+   ``coverage`` field in a derived assembly GTF.
+2. ``gffcompare -r <ref.gtf>`` — produce a fresh ``.tmap`` for that derived GTF (distinct from any
+   bundle-supplied training tmap).
+3. Python ``gtfcuff``-style ROC/AUC — sweep ranked transcripts against the new tmap; ``ref-size`` is
+   the count of **multi-exon** reference transcripts.
 
-When ``filter_validation_chroms`` is true (default), assembly and reference are passed through
-``gtfformat filter-chrom`` to **validation chromosomes** only — same split as Stage I/II training
-(``split_policy``), matching legacy ``generate_baseline`` / ``generate_roc_data``. Optional
-``chromosomes_file`` forces the same explicit list for both GTFs (legacy text file).
+**Baseline:** run gffcompare on the **original** assembly GTF (assembler coverage only), then the
+same ROC/AUC step.
 
-This differs from merging ``transcripts.ranked.tsv`` with a static tmap + sklearn PR, which skips
-re-annotation and mis-aligns labels with the ranking procedure.
+**Chromosomes:** when ``filter_validation_chroms`` is true (default), both assembly and reference
+GTFs pass through ``gtfformat filter-chrom`` so evaluation uses the same validation chromosomes as
+Stage I/II training (derived from ``split_policy``). ``chromosomes_file`` optionally supplies an
+explicit shared chromosome list for both inputs.
+
+This path is **not** the same as joining ``transcripts.ranked.tsv`` to a fixed tmap inside pandas:
+that skips re-annotation and can mis-align labels with how scores were produced.
 """
 
 from __future__ import annotations
@@ -31,22 +37,17 @@ import pandas as pd
 
 from telos_v2.backends.gtfcuff import run_gtfcuff_auc, run_gtfcuff_roc
 from telos_v2.backends.gtfformat import run_filter_chrom, run_update_transcript_cov
+from telos_v2.gtf_attributes import parse_transcript_id
 from telos_v2.models.chrom_split import seqnames_on_validation_split_from_gtf
 
 _ROC_LINE = re.compile(
     r"sensitivity\s*=\s*([\d.]+)\s+precision\s*=\s*([\d.]+)",
 )
 
-# Default Linux build used in this workspace when ``gffcompare`` is not on PATH and YAML omits
-# ``analysis.pr_vs_baseline.gffcompare_bin``. Override with env ``GFFCOMPARE`` or YAML.
-_DEFAULT_GFFCOMPARE = Path(
-    "/datadisk1/ixk5174/tools/gffcompare-0.12.10.Linux_x86_64/gffcompare"
-)
-
-
 def resolve_gffcompare_executable(gffcompare_bin: str | None) -> str:
     """
-    Configured path, then ``GFFCOMPARE`` env, then ``PATH``, then workspace default if present.
+    Resolve ``gffcompare`` executable string for ``subprocess``: non-empty YAML override wins, then env
+    ``GFFCOMPARE``, then :func:`shutil.which`. Raises :class:`FileNotFoundError` if none resolve.
     """
     if gffcompare_bin and str(gffcompare_bin).strip():
         return str(gffcompare_bin).strip()
@@ -56,17 +57,20 @@ def resolve_gffcompare_executable(gffcompare_bin: str | None) -> str:
     found = shutil.which("gffcompare")
     if found:
         return found
-    if _DEFAULT_GFFCOMPARE.is_file():
-        return str(_DEFAULT_GFFCOMPARE)
     raise FileNotFoundError(
-        "gffcompare not found: not on PATH, GFFCOMPARE unset, and default missing at "
-        f"{_DEFAULT_GFFCOMPARE}. Install gffcompare or set analysis.pr_vs_baseline.gffcompare_bin "
-        "or GFFCOMPARE."
+        "gffcompare not found: install it, put it on PATH, set GFFCOMPARE, or set "
+        "analysis.pr_vs_baseline.gffcompare_bin in the benchmark YAML."
     )
 
 
 def count_multi_exon_reference_transcripts(ref_gtf: Path) -> int:
-    """Match legacy ``ROCPipeline._count_multi_exon_transcripts`` (exon rows per transcript_id)."""
+    """
+    Count reference transcripts that have more than one exon row in ``ref_gtf``.
+
+    Scans exon features, buckets by ``transcript_id`` from column 9, counts exons per id, then
+    returns how many ids have count > 1. Single-exon transcripts are excluded because the ROC
+    definition used here mirrors the multi-exon reference denominator used in transcript PR.
+    """
     exon_counts: dict[str, int] = {}
     with ref_gtf.open(encoding="utf-8", errors="replace") as fh:
         for line in fh:
@@ -75,17 +79,18 @@ def count_multi_exon_reference_transcripts(ref_gtf: Path) -> int:
             cols = line.rstrip("\n").split("\t")
             if len(cols) < 9 or cols[2] != "exon":
                 continue
-            m = re.search(r'transcript_id\s+"([^"]+)"', cols[8])
-            if m:
-                tid = m.group(1)
+            tid = parse_transcript_id(cols[8])
+            if tid:
                 exon_counts[tid] = exon_counts.get(tid, 0) + 1
     return sum(1 for c in exon_counts.values() if c > 1)
 
 
 def write_predictions_for_update_cov(ranked_tsv: Path, out_tsv: Path, *, score_col: str = "pred_prob") -> None:
     """
-    Two-column tab file for ``gtfformat update-transcript-cov`` (see ``genome1::update_transcript_coverage``):
-    header row, then ``transcript_id`` + score (column 0 and 1).
+    Write TSV consumed by :func:`telos_v2.backends.gtfformat.run_update_transcript_cov`: header + rows.
+
+    Sorts by ``score_col`` descending and keeps first row per ``transcript_id`` so one score maps to
+    each transcript when duplicates exist in the ranked table.
     """
     df = pd.read_csv(ranked_tsv, sep="\t", dtype={"transcript_id": str})
     if "transcript_id" not in df.columns or score_col not in df.columns:
@@ -97,6 +102,11 @@ def write_predictions_for_update_cov(ranked_tsv: Path, out_tsv: Path, *, score_c
 
 
 def _find_gffcompare_tmap(work_dir: Path, prefix: str, query_gtf: Path) -> Path:
+    """
+    Locate gffcompare’s ``.tmap`` under ``work_dir`` after ``-o prefix``.
+
+    Prefers ``{prefix}.{query_gtf.name}.tmap``; if missing, accepts exactly one ``{prefix}*.tmap``.
+    """
     expected = work_dir / f"{prefix}.{query_gtf.name}.tmap"
     if expected.is_file():
         return expected
@@ -119,6 +129,12 @@ def run_gffcompare(
     *,
     gffcompare_bin: str | None = None,
 ) -> Path:
+    """
+    Run ``gffcompare -r ref_gtf -o output_prefix query_gtf`` with cwd ``work_dir``.
+
+    Returns path to the resulting ``.tmap`` via :func:`_find_gffcompare_tmap`. Raises :class:`RuntimeError`
+    on non-zero exit.
+    """
     exe = resolve_gffcompare_executable(gffcompare_bin)
     work_dir.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(
@@ -143,23 +159,46 @@ def run_gffcompare(
 
 
 def parse_gtfcuff_roc_stdout(text: str) -> tuple[np.ndarray, np.ndarray]:
-    """Parse ``ROC: ... sensitivity = X precision = Y`` lines; return recall, precision in [0,1]."""
+    """
+    Parse recall/precision pairs from :func:`telos_v2.backends.gtfcuff.run_gtfcuff_roc` text output.
+
+    Accepts ``recall\\tprecision`` data lines (skips header), or lines containing ``ROC:`` with
+    ``sensitivity = … precision = …`` percentages scaled to [0,1]. Raises if no points parsed.
+    """
     recalls: list[float] = []
     precs: list[float] = []
     for line in text.splitlines():
-        if "ROC:" not in line:
+        raw = line.strip()
+        if not raw or raw.startswith("#"):
             continue
-        m = _ROC_LINE.search(line)
-        if not m:
+        if raw.lower().startswith("recall\t"):
             continue
-        recalls.append(float(m.group(1)) / 100.0)
-        precs.append(float(m.group(2)) / 100.0)
+        if "\t" in raw:
+            parts = raw.split("\t")
+            if len(parts) >= 2:
+                try:
+                    recalls.append(float(parts[0]))
+                    precs.append(float(parts[1]))
+                    continue
+                except ValueError:
+                    pass
+        if "ROC:" in raw:
+            m = _ROC_LINE.search(raw)
+            if not m:
+                continue
+            recalls.append(float(m.group(1)) / 100.0)
+            precs.append(float(m.group(2)) / 100.0)
     if not recalls:
         raise ValueError("No ROC lines parsed from gtfcuff roc output")
     return np.asarray(recalls, dtype=float), np.asarray(precs, dtype=float)
 
 
 def _tmap_positive_negative(tmap_path: Path) -> tuple[int, int]:
+    """
+    Scan ``tmap_path`` data rows: count total rows with single-char class code and how many are ``=``.
+
+    Returns ``(n_total, n_positive)`` for logging / summary sidecars.
+    """
     n_pos = n_tot = 0
     with tmap_path.open(encoding="utf-8", errors="replace") as fh:
         for line in fh:
@@ -183,7 +222,11 @@ def _tmap_positive_negative(tmap_path: Path) -> tuple[int, int]:
 
 
 def _write_temp_chrom_list(names: list[str]) -> Path:
-    """Write one seqname per line; caller should unlink when done."""
+    """
+    Create a temp file with one chromosome name per line for :func:`run_filter_chrom`.
+
+    Caller must ``unlink`` the path when finished (see :func:`_apply_pr_chrom_filter` ``finally``).
+    """
     fd, raw = tempfile.mkstemp(prefix="telos_valchrom_", suffix=".txt")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -203,7 +246,6 @@ def _write_temp_chrom_list(names: list[str]) -> Path:
 
 def _apply_pr_chrom_filter(
     *,
-    gtfformat_bin: Path,
     assembly_gtf: Path,
     ref_gtf: Path,
     work_dir: Path,
@@ -212,9 +254,13 @@ def _apply_pr_chrom_filter(
     autosome_train_range: tuple[int, int] | None,
 ) -> tuple[Path, Path, dict[str, Any]]:
     """
-    Optionally filter assembly + reference to the same chromosome set as legacy ROC prep.
+    Optionally filter assembly + reference to the same chromosome set used for validation-split PR.
 
-    Returns ``(assembly_out, ref_out, meta)`` where ``meta`` describes what was done.
+    Returns:
+        ``(assembly_out, ref_out, meta)``. If no filtering applies, paths are originals and ``meta``
+        marks ``pr_chrom_filter`` as ``none``. Explicit file mode runs filter-chrom with that list;
+        auto mode derives lists from :func:`~telos_v2.models.chrom_split.seqnames_on_validation_split_from_gtf`
+        per GTF. Temp list files are deleted in a ``finally`` block when used.
     """
     meta: dict[str, Any] = {
         "pr_chrom_filter": "none",
@@ -237,8 +283,8 @@ def _apply_pr_chrom_filter(
         meta["pr_chromosomes_file"] = str(chrom_file.resolve())
         asm_out = work_dir / "query_validation_chrom.gtf"
         ref_out = work_dir / "ref_validation_chrom.gtf"
-        run_filter_chrom(gtfformat_bin, assembly_gtf, chrom_file, asm_out)
-        run_filter_chrom(gtfformat_bin, ref_gtf, chrom_file, ref_out)
+        run_filter_chrom(None, assembly_gtf, chrom_file, asm_out)
+        run_filter_chrom(None, ref_gtf, chrom_file, ref_out)
         meta["pr_filtered_assembly_gtf"] = str(asm_out.resolve())
         meta["pr_filtered_ref_gtf"] = str(ref_out.resolve())
         return asm_out, ref_out, meta
@@ -261,7 +307,7 @@ def _apply_pr_chrom_filter(
             list_asm = _write_temp_chrom_list(asm_names)
             tmp_chrom_files.append(list_asm)
             asm_out = work_dir / "query_validation_chrom.gtf"
-            run_filter_chrom(gtfformat_bin, assembly_gtf, list_asm, asm_out)
+            run_filter_chrom(None, assembly_gtf, list_asm, asm_out)
             meta["pr_filtered_assembly_gtf"] = str(asm_out.resolve())
         else:
             asm_out = assembly_gtf.resolve()
@@ -269,7 +315,7 @@ def _apply_pr_chrom_filter(
             list_ref = _write_temp_chrom_list(ref_names)
             tmp_chrom_files.append(list_ref)
             ref_out = work_dir / "ref_validation_chrom.gtf"
-            run_filter_chrom(gtfformat_bin, ref_gtf, list_ref, ref_out)
+            run_filter_chrom(None, ref_gtf, list_ref, ref_out)
             meta["pr_filtered_ref_gtf"] = str(ref_out.resolve())
         else:
             ref_out = ref_gtf.resolve()
@@ -282,7 +328,21 @@ def _apply_pr_chrom_filter(
                 pass
 
 
-def run_transcript_pr_benchmark_gtfcuff(
+def _chrom_meta_as_transcript_pr(chrom_meta: dict[str, Any]) -> dict[str, Any]:
+    """
+    Prefix chrom-filter metadata for benchmark CSV: keys ``pr_foo`` become ``transcript_pr_foo``;
+    other keys get ``transcript_pr_`` prepended.
+    """
+    out: dict[str, Any] = {}
+    for k, v in chrom_meta.items():
+        if k.startswith("pr_"):
+            out["transcript_pr_" + k[3:]] = v
+        else:
+            out[f"transcript_pr_{k}"] = v
+    return out
+
+
+def run_transcript_pr_benchmark(
     *,
     assembly_gtf: Path,
     ref_gtf: Path,
@@ -290,8 +350,7 @@ def run_transcript_pr_benchmark_gtfcuff(
     reports_pr_dir: Path,
     work_rel: str,
     prefix: str,
-    gtfformat_bin: Path,
-    gtfcuff_bin: Path,
+    gtfcuff_bin: Path | None = None,
     gffcompare_bin: str | None = None,
     measure: str = "cov",
     score_col: str = "pred_prob",
@@ -301,19 +360,59 @@ def run_transcript_pr_benchmark_gtfcuff(
     filter_validation_chroms: bool = True,
     autosome_train_range: tuple[int, int] | None = None,
     save_pr_tables: bool = False,
+    ephemeral_workdir: bool = False,
 ) -> dict[str, Any]:
     """
-    Legacy-style transcript PR: filter-chrom (optional) → update-transcript-cov → gffcompare → gtfcuff.
+    Run the full transcript-level PR benchmark for one model output (one ranked TSV).
 
-    Required work files under ``reports_pr_dir / work_rel``: predictions TSV, cov-updated GTF, gffcompare
-    outputs. Optional **curve/summary TSV** files are written only when ``save_pr_tables`` is true;
-    the benchmark summary row always gets AUC from stdout parsing either way.
+    **Ordered steps**
+
+    1. Create ``work_dir`` — either ``reports_pr_dir / work_rel`` or a temp directory when
+       ``ephemeral_workdir`` is true.
+    2. Optionally restrict chromosomes via :func:`_apply_pr_chrom_filter` (explicit file and/or
+       validation split from ``autosome_train_range``).
+    3. Count multi-exon reference transcripts on the (possibly filtered) reference GTF.
+    4. Materialize ``pred_tsv`` from ``ranked_tsv`` (dedupe transcripts, keep highest score).
+    5. Run ``update-transcript-cov`` to bake scores into a derived assembly GTF.
+    6. Run gffcompare for **model** path (updated GTF vs ref) and **baseline** path (raw assembly vs ref).
+    7. Run Python gtfcuff ROC + AUC for both tmaps with the same ``measure`` and ``ref_multi`` denominator.
+    8. Optionally write PR point TSVs and a small summary CSV under ``reports_pr_dir``.
+    9. Optionally render an ROC-style PR plot with matplotlib.
+    10. Delete temp ``work_dir`` when ephemeral.
+
+    Args:
+        assembly_gtf: Unfiltered assembly GTF path (bundle).
+        ref_gtf: Reference annotation GTF.
+        ranked_tsv: Model rankings with ``transcript_id`` and ``score_col``.
+        reports_pr_dir: Where plots/tables land; also parent of persistent ``work_rel`` when not ephemeral.
+        work_rel: Subdirectory name under ``reports_pr_dir`` for non-ephemeral intermediates.
+        prefix: Prefix for gffcompare outputs and intermediate filenames.
+        gtfcuff_bin: Unused placeholder for historical CLI symmetry; Python backend ignores it.
+        gffcompare_bin: Optional explicit gffcompare executable; else ``GFFCOMPARE`` or ``PATH``.
+        measure: Abundance column name passed through to ROC (typically ``cov``).
+        score_col: Column in ``ranked_tsv`` used as the transcript score.
+        plot: Whether to attempt matplotlib PNG output.
+        plot_filename: PNG basename under ``reports_pr_dir``.
+        chromosomes_file: Optional explicit chromosome list file for filter-chrom on both inputs.
+        filter_validation_chroms: If true and ``autosome_train_range`` is set, filter to validation chroms.
+        autosome_train_range: Inclusive numeric autosome range from Stage I split policy parsing.
+        save_pr_tables: If true, write model/baseline PR TSVs and AUPR summary CSV.
+        ephemeral_workdir: If true, use ``tempfile.mkdtemp`` and delete it after extracting metrics.
+
+    Returns:
+        Dict with string keys including ``transcript_pr_auc_model``, ``transcript_pr_auc_baseline``,
+        tmap row counts, optional paths to saved tables/plot, optional ``transcript_pr_work_dir``,
+        and chrom-filter metadata prefixed with ``transcript_pr_``.
     """
-    work_dir = (reports_pr_dir / work_rel).resolve()
+    cleanup_dir: Path | None = None
+    if ephemeral_workdir:
+        cleanup_dir = Path(tempfile.mkdtemp(prefix="telos_transcript_pr_"))
+        work_dir = cleanup_dir
+    else:
+        work_dir = (reports_pr_dir / work_rel).resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
 
     assembly_eff, ref_eff, chrom_meta = _apply_pr_chrom_filter(
-        gtfformat_bin=gtfformat_bin,
         assembly_gtf=assembly_gtf,
         ref_gtf=ref_gtf,
         work_dir=work_dir,
@@ -328,7 +427,7 @@ def run_transcript_pr_benchmark_gtfcuff(
     write_predictions_for_update_cov(ranked_tsv, pred_tsv, score_col=score_col)
 
     updated_gtf = work_dir / f"{prefix}_updated_cov.gtf"
-    run_update_transcript_cov(gtfformat_bin, assembly_eff, pred_tsv, updated_gtf)
+    run_update_transcript_cov(None, assembly_eff, pred_tsv, updated_gtf)
 
     prefix_model = f"{prefix}_model"
     tmap_model = run_gffcompare(
@@ -365,7 +464,7 @@ def run_transcript_pr_benchmark_gtfcuff(
             [
                 {
                     "curve": "model",
-                    "gtfcuff_auc": auc_model,
+                    "transcript_pr_auc": auc_model,
                     "n_tmap_rows": n_m,
                     "n_class_eq": pos_m,
                     "ref_multi_exon": ref_multi,
@@ -373,7 +472,7 @@ def run_transcript_pr_benchmark_gtfcuff(
                 },
                 {
                     "curve": "baseline",
-                    "gtfcuff_auc": auc_baseline,
+                    "transcript_pr_auc": auc_baseline,
                     "n_tmap_rows": n_b,
                     "n_class_eq": pos_b,
                     "ref_multi_exon": ref_multi,
@@ -386,17 +485,17 @@ def run_transcript_pr_benchmark_gtfcuff(
         summary_path = str(summary_csv.resolve())
 
     out: dict[str, Any] = {
-        "pr_aupr_model": float(auc_model),
-        "pr_aupr_baseline": float(auc_baseline),
-        "pr_n_items": n_m,
-        "pr_n_positive": pos_m,
-        "pr_abundance_column": measure,
-        "pr_model_curve_tsv": curve_model_path,
-        "pr_baseline_curve_tsv": curve_base_path,
-        "pr_aupr_summary_csv": summary_path,
-        "pr_plot_png": "",
-        "pr_gtfcuff_work_dir": str(work_dir),
-        **chrom_meta,
+        "transcript_pr_auc_model": float(auc_model),
+        "transcript_pr_auc_baseline": float(auc_baseline),
+        "transcript_pr_n_tmap_rows": n_m,
+        "transcript_pr_n_class_eq": pos_m,
+        "transcript_pr_abundance_measure": measure,
+        "transcript_pr_model_points_tsv": curve_model_path,
+        "transcript_pr_baseline_points_tsv": curve_base_path,
+        "transcript_pr_metrics_summary_csv": summary_path,
+        "transcript_pr_plot_png": "",
+        "transcript_pr_work_dir": "" if cleanup_dir is not None else str(work_dir.resolve()),
+        **_chrom_meta_as_transcript_pr(chrom_meta),
     }
 
     if plot:
@@ -405,20 +504,23 @@ def run_transcript_pr_benchmark_gtfcuff(
 
             plot_path = reports_pr_dir / plot_filename
             fig, ax = plt.subplots(figsize=(6, 5), dpi=120)
-            ax.plot(rec_b, pre_b, label=f"Baseline (gtfcuff AUC={auc_baseline:.4f})", alpha=0.85)
-            ax.plot(rec_m, pre_m, label=f"Model cov (gtfcuff AUC={auc_model:.4f})", alpha=0.85)
+            ax.plot(rec_b, pre_b, label=f"Baseline (AUC={auc_baseline:.4f})", alpha=0.85)
+            ax.plot(rec_m, pre_m, label=f"Model (AUC={auc_model:.4f})", alpha=0.85)
             ax.set_xlabel("Recall (sensitivity)")
             ax.set_ylabel("Precision")
             ax.set_xlim(0.0, 1.0)
             ax.set_ylim(0.0, 1.05)
             ax.grid(True, alpha=0.3)
             ax.legend(loc="lower left")
-            ax.set_title("Transcript PR (gffcompare + gtfcuff roc)")
+            ax.set_title("Transcript PR (gffcompare + ranking sweep)")
             fig.tight_layout()
             fig.savefig(plot_path)
             plt.close(fig)
-            out["pr_plot_png"] = str(plot_path)
+            out["transcript_pr_plot_png"] = str(plot_path)
         except ImportError:
             pass
+
+    if cleanup_dir is not None:
+        shutil.rmtree(cleanup_dir, ignore_errors=True)
 
     return out

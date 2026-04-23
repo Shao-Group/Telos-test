@@ -1,1 +1,1 @@
-"""Reporting helpers for Telos v2."""
+"""Reserved for optional reporting utilities (core train/predict stay artifact-minimal)."""

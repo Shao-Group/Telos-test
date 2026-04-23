@@ -1,4 +1,4 @@
-"""Optional sklearn metrics: ranked transcripts × bundle tmap (not legacy gtfcuff PR)."""
+"""Optional sklearn metrics: merge ranked transcripts with a **bundle** gffcompare tmap (no re-run gffcompare)."""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ from telos_v2.labels.transcript_labels import load_tmap_labels
 
 def sklearn_metrics_ranked_vs_bundle_tmap(ranked_tsv: Path, tmap_path: Path) -> dict[str, Any]:
     """
-    Classification metrics from merging ``transcripts.ranked.*.tsv`` with **bundle** tmap labels.
+    Classification metrics after inner-joining ranked transcripts to :func:`load_tmap_labels` from ``tmap_path``.
 
-    This is a fast diagnostic only; legacy transcript AUPR uses :mod:`telos_v2.evaluation.transcript_pr_pipeline`
-    (gffcompare + gtfcuff). Do not compare these numbers to gtfcuff AUC directly.
+    This is a fast diagnostic only; benchmark transcript AUPR from :mod:`telos_v2.evaluation.transcript_pr_pipeline`
+    re-runs gffcompare on score-injected GTFs. Do not compare these numbers to that AUC directly.
     """
     ranked = pd.read_csv(ranked_tsv, sep="\t")
     if "transcript_id" not in ranked.columns or "pred_prob" not in ranked.columns:
@@ -64,4 +64,5 @@ def sklearn_metrics_ranked_vs_bundle_tmap(ranked_tsv: Path, tmap_path: Path) -> 
 
 
 def suffix_keys(metrics: dict[str, Any], suf: str) -> dict[str, Any]:
+    """Return a shallow copy of ``metrics`` with every key suffixed by ``_{suf}`` (for benchmark CSV columns)."""
     return {f"{k}_{suf}": v for k, v in metrics.items()}
