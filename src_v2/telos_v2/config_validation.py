@@ -192,9 +192,13 @@ def validate_benchmark_config(cfg_map: dict[str, Any]) -> None:
         )
     if "execution" in cfg_map:
         ex = _expect_dict(cfg_map["execution"], "execution")
-        _reject_unknown_keys(ex, {"stop_on_error"}, "execution")
+        _reject_unknown_keys(ex, {"stop_on_error", "max_parallel_tests"}, "execution")
         if "stop_on_error" in ex:
             _expect_bool(ex["stop_on_error"], "execution.stop_on_error")
+        if "max_parallel_tests" in ex:
+            mpt = ex["max_parallel_tests"]
+            if not isinstance(mpt, int) or isinstance(mpt, bool) or mpt < 1:
+                raise ValueError("execution.max_parallel_tests must be a positive integer")
     if "analysis" in cfg_map:
         an = _expect_dict(cfg_map["analysis"], "analysis")
         _reject_unknown_keys(

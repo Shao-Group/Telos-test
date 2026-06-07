@@ -1,7 +1,13 @@
 """
 Phase A cross-annotation benchmarks: train on annotation only; evaluate tests against augmented ref.
 
-Training uses the standard matrix (original ``train.ref_gtf`` and train ``tmap``). For each test
+Training uses the standard matrix (original ``train.ref_gtf`` and train ``tmap``). Models are trained
+once per ``(data_type, train_annotation)`` under ``<outdir>/_phase_a_shared_train/<dt>__train_<anno>/``;
+each matrix cell then uses ``train.mode: skip`` with that ``model_dir`` when artifacts exist. Stage I
+feature reuse is controlled by ``stage1.feature_extraction.cache_dir`` in the Stage I YAML (or
+``TELOS_STAGE1_CACHE_DIR``).
+
+For each test
 row, ``ref_gtf`` is replaced with the augmented reference for ``(test_ref_id, modality, sample)``
 (from ``augmented_refs_index.csv``), and ``tmap`` is replaced with a gffcompare ``.tmap`` produced
 by comparing the assembly GTF to that same augmented reference (from
@@ -36,9 +42,22 @@ from telos_v2.benchmark.matrix import (
     resolve_bundles_root,
 )
 from telos_v2.benchmark.orchestrator import run_benchmark
+from telos_v2.benchmark.shared_train import apply_train_reuse, shared_train_dir
 from telos_v2.config_loader import default_stage1_config_path
 from telos_v2.config_models import BenchmarkIO
 from telos_v2.config_validation import validate_benchmark_config
+
+PHASE_A_SHARED_TRAIN_SUBDIR = "_phase_a_shared_train"
+
+
+def phase_a_shared_train_dir(outdir: Path, data_type: str, train_annotation: str) -> Path:
+    """One train run per (data_type, train_annotation); lives under Phase A benchmark root."""
+    return shared_train_dir(outdir, data_type, train_annotation, subdir=PHASE_A_SHARED_TRAIN_SUBDIR)
+
+
+def apply_phase_a_train_reuse(mapping: dict[str, Any], *, shared_train_parent: Path) -> None:
+    """Train once per shared directory; subsequent benchmark cells skip training."""
+    apply_train_reuse(mapping, shared_train_parent=shared_train_parent)
 
 
 def load_augmented_ref_lookup(index_csv: Path) -> dict[tuple[str, str, str], str]:
@@ -196,6 +215,7 @@ def run_phase_a_cross_annotation_benchmarks(
                 test_ref_id = ANNOTATION_TO_REF_ID[te]
                 combo_id = f"{dt}__train_{tr}__test_{te}__phase_a_novel_ref"
                 combo_outdir = outdir / combo_id
+                shared_parent = phase_a_shared_train_dir(outdir, dt, tr)
                 print(f"[telos_v2] novel phase A {total}: {combo_id}")
                 try:
                     mapping = build_benchmark_yaml_mapping(
@@ -204,8 +224,9 @@ def run_phase_a_cross_annotation_benchmarks(
                         test_annotation=te,
                         bundles_root=root,
                         stage1_config=stage1,
-                        train_outdir=combo_outdir / "train",
+                        train_outdir=shared_parent,
                     )
+                    apply_phase_a_train_reuse(mapping, shared_train_parent=shared_parent)
                     apply_phase_a_test_eval_paths(
                         mapping,
                         test_ref_id=test_ref_id,
@@ -239,6 +260,8 @@ def run_phase_a_cross_annotation_benchmarks(
                 header = (
                     "# Phase A (novel eval): train uses original annotation; each test ref_gtf and tmap "
                     "use augmented reference + gffcompare tmap for that (ref_id, modality, sample, assembler).\n"
+                    "# Train reuse: shared tree under benchmark outdir:_phase_a_shared_train/<dt>__train_<anno>/ "
+                    "(run once; other test_* cells use train.mode=skip + model_dir when present).\n"
                     f"# augmented_index={augmented_index.resolve()}\n"
                     f"# augmented_tmap_index={augmented_tmap_index.resolve()}\n\n"
                 )

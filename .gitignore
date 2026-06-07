@@ -2,11 +2,11 @@
 src/utils/__pycache__/
 data/
 out/
-features/
+# features/
 data_train/
-configs/
+# configs/
 logs/
-models/
+# models/
 reports/
 old_src/
 *output*/
@@ -23,3 +23,5 @@ genome/
 runs/
 schemas/
 tmp/
+*__pycache__/
+plot_v2/

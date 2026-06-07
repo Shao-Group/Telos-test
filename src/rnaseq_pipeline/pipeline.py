@@ -127,3 +127,37 @@ class RnaseqAssemblyPipeline:
             gffcmp_dir=gff_dir,
             gffcompare_pairs=gff_pairs,
         )
+
+    def run_isoquant_only(
+        self,
+        *,
+        bam: Path,
+        work_dir: Path,
+        ref_fasta: Path,
+        preset: LibraryPreset,
+    ) -> tuple[Path, Path]:
+        """
+        Rebuild only IsoQuant outputs (GTF + TPM) from an existing aligned BAM.
+
+        Useful for recovery/backfill when StringTie or GFFCompare outputs already exist.
+        """
+        if preset not in (LibraryPreset.NANOPORE, LibraryPreset.PACBIO):
+            raise ValueError("run_isoquant_only supports only nanopore or pacbio presets")
+        bam = bam.resolve()
+        if not bam.is_file():
+            raise FileNotFoundError(bam)
+        work_dir = work_dir.resolve()
+        work_dir.mkdir(parents=True, exist_ok=True)
+        out_gtf = work_dir / "isoquant.gtf"
+        out_tpm = work_dir / "isoquant_transcript_model_tpm.tsv"
+        run_isoquant(
+            bam,
+            ref_fasta.resolve(),
+            out_gtf,
+            out_tpm,
+            preset,
+            self.cfg,
+            work_dir=work_dir,
+        )
+        run_gtfformat_update_tpm(out_gtf, out_tpm, self.cfg, work_dir=work_dir)
+        return out_gtf, out_tpm

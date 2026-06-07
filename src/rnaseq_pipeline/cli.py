@@ -174,6 +174,57 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("-v", "--verbose", action="store_true", help="DEBUG logging.")
 
+    run_iso = sub.add_parser(
+        "run-isoquant-only",
+        help="Run only IsoQuant (+ TPM coverage update) from an existing sorted BAM.",
+    )
+    run_iso.add_argument(
+        "--preset",
+        type=str,
+        choices=[LibraryPreset.NANOPORE.value, LibraryPreset.PACBIO.value],
+        required=True,
+        help="nanopore or pacbio",
+    )
+    run_iso.add_argument(
+        "--work-dir",
+        type=Path,
+        required=True,
+        help="Sample output directory containing / receiving isoquant.gtf and TPM table.",
+    )
+    run_iso.add_argument(
+        "--bam",
+        type=Path,
+        required=True,
+        help="Existing sorted BAM used by IsoQuant.",
+    )
+    run_iso.add_argument("--ref-fasta", type=Path, required=True, help="Reference genome FASTA.")
+    run_iso.add_argument(
+        "--conda-env",
+        type=str,
+        default="irtesam-berth",
+        help="Conda environment for tool execution.",
+    )
+    run_iso.add_argument(
+        "--isoquant-conda-env",
+        type=str,
+        default=None,
+        help="Conda env for IsoQuant only. Default: $ISOQUANT_CONDA_ENV or --conda-env.",
+    )
+    run_iso.add_argument(
+        "--isoquant-script",
+        type=str,
+        default=None,
+        help="IsoQuant executable in env (default $ISOQUANT_SCRIPT or 'isoquant').",
+    )
+    run_iso.add_argument("--threads-isoquant", type=int, default=32)
+    run_iso.add_argument(
+        "--gtfformat",
+        type=Path,
+        default=None,
+        help="Optional gtfformat binary for update-tpm. If missing, Python fallback is used.",
+    )
+    run_iso.add_argument("-v", "--verbose", action="store_true", help="DEBUG logging.")
+
     return p
 
 
@@ -196,6 +247,31 @@ def main(argv: list[str] | None = None) -> int:
         )
         print("HISAT2 index ready. Use with:")
         print(f"  --hisat2-index {prefix}")
+        return 0
+
+    if args.command == "run-isoquant-only":
+        isoq_env = args.isoquant_conda_env or os.environ.get("ISOQUANT_CONDA_ENV")
+        isoq_script = args.isoquant_script or os.environ.get("ISOQUANT_SCRIPT")
+        cfg_kw: dict = dict(
+            conda_env=args.conda_env,
+            threads_isoquant=args.threads_isoquant,
+            gtfformat=args.gtfformat,
+        )
+        if isoq_env:
+            cfg_kw["isoquant_conda_env"] = isoq_env
+        if isoq_script:
+            cfg_kw["isoquant_script"] = isoq_script
+        cfg = RnaseqToolConfig(**cfg_kw)
+        pipeline = RnaseqAssemblyPipeline(cfg)
+        out_gtf, out_tpm = pipeline.run_isoquant_only(
+            bam=args.bam,
+            work_dir=args.work_dir,
+            ref_fasta=args.ref_fasta,
+            preset=LibraryPreset(args.preset),
+        )
+        print("Done.")
+        print(f"  IsoQuant GTF: {out_gtf}")
+        print(f"  IsoQuant TPM: {out_tpm}")
         return 0
 
     if args.command != "run":

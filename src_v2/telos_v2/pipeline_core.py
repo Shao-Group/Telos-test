@@ -112,6 +112,17 @@ def build_stage1_runtime_config(
     )
 
 
+def stage1_cache_dir_for(
+    *,
+    bam: Path,
+    gtf: Path,
+    runtime_cfg: Stage1RuntimeConfig,
+    cache_root: Path,
+) -> Path:
+    """Resolved cache directory for ``(bam, gtf, runtime_cfg)`` under ``cache_root``."""
+    return (cache_root / _stage1_cache_key(bam=bam, gtf=gtf, runtime_cfg=runtime_cfg)).resolve()
+
+
 def build_stage1_inputs(
     *,
     bam: Path,
@@ -164,6 +175,7 @@ def build_stage1_inputs(
         parallel=runtime_cfg.parallel,
         parallel_min_sites=runtime_cfg.parallel_min_sites,
         n_workers=runtime_cfg.n_workers,
+        progress=False,
     )
     if not rows:
         raise ValueError("Stage I feature extraction returned no rows.")

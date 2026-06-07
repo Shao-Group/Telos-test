@@ -1,0 +1,2 @@
+# Optional dev deps (tests). Core env: see environment.yml / conda.
+pytest>=8.0

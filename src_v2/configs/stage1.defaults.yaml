@@ -8,7 +8,7 @@ stage1:
       n_estimators: 300
       max_depth: null
       max_features: sqrt
-      n_jobs: -1
+      n_jobs: 20
       class_weight: balanced_subsample
     # Stage I XGBoost (legacy project_config/xgboost_config.yaml-style keys)
     xgboost:
@@ -19,10 +19,10 @@ stage1:
       colsample_bytree: 0.8
       reg_lambda: 3
       reg_alpha: 0.5
-      n_jobs: 8
+      n_jobs: 20
     # Stage II LightGBM thread count (-1 = all cores; use a small integer on shared clusters)
     lightgbm:
-      n_jobs: -1
+      n_jobs: 20
   feature_extraction:
     window_size: 100
     density_window: 100
@@ -32,6 +32,9 @@ stage1:
     splice_site_window: 300
     gradient_analysis_range: 100
     extended_window: 1000
+    # Persist Stage I (df_cov, df_all) per (BAM, GTF, feature settings) hash. Speeds reruns/sweeps.
+    # Overrides: env TELOS_STAGE1_CACHE_DIR (wins when set).
+    cache_dir: runs/telos_stage1_feature_cache
     # Process pool over candidate sites (one BAM handle per worker); mirrors legacy extract_features.py.
     parallel: true
     parallel_min_sites: 50

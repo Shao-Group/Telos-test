@@ -47,6 +47,7 @@ def evaluate_stage1_test_aupr(
     ref_gtf: Path,
     *,
     tolerance_bp: int,
+    include_curve_points: bool = False,
 ) -> dict[str, Any]:
     """
     Compute Stage I test AUPR for RF, XGB, and coverage baseline per site type.
@@ -61,6 +62,7 @@ def evaluate_stage1_test_aupr(
         Flat dict with keys like ``stage1_test_aupr_tss_rf``; empty dict if inputs are unusable.
     """
     out: dict[str, Any] = {}
+    curve_points: dict[str, pd.DataFrame] = {}
     df = pd.read_csv(
         sites_scored_tsv,
         sep="\t",
@@ -137,4 +139,24 @@ def evaluate_stage1_test_aupr(
             )
             out[f"stage1_test_n_novel_{st.lower()}"] = int(pd.Series(novel_labels).astype(int).sum())
             out[f"stage1_test_n_eval_{st.lower()}"] = int(len(sub))
+        if include_curve_points:
+            if novel_ref_df.empty:
+                is_novel = pd.Series(0, index=sub.index, dtype=int)
+            else:
+                is_novel = label_sites_by_proximity(sub, novel_ref_df, st, tolerance_bp).astype(int)
+            curve_points[st.lower()] = (
+                pd.DataFrame(
+                    {
+                        "label": pd.Series(labels, index=sub.index).astype(int).values,
+                        "is_novel": pd.Series(is_novel, index=sub.index).astype(int).values,
+                        "score_rf": pd.to_numeric(sub["p_site_rf"], errors="coerce").values,
+                        "score_xgb": pd.to_numeric(sub["p_site_xgb"], errors="coerce").values,
+                        "score_baseline_cov": pd.to_numeric(sub["coverage"], errors="coerce").values,
+                    }
+                )
+                .dropna(subset=["score_rf", "score_xgb", "score_baseline_cov"])
+                .reset_index(drop=True)
+            )
+    if include_curve_points:
+        out["_curve_points"] = curve_points
     return out

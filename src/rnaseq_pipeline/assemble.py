@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from rnaseq_pipeline.config import LibraryPreset, RnaseqToolConfig
 from rnaseq_pipeline.exec_env import conda_run_cmd
+from rnaseq_pipeline.isoquant_tpm_update import update_isoquant_gtf_coverage_from_tpm
 
 LOG = logging.getLogger(__name__)
 
@@ -108,7 +109,8 @@ def run_gtfformat_update_tpm(
     work_dir: Path,
 ) -> None:
     if cfg.gtfformat is None:
-        LOG.info("gtfformat not configured; skipping TPM merge")
+        LOG.info("gtfformat not configured; using Python TPM merge fallback")
+        update_isoquant_gtf_coverage_from_tpm(gtf, tpm, gtf)
         return
     if not tpm.is_file():
         raise FileNotFoundError(tpm)
