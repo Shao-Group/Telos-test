@@ -1,0 +1,347 @@
+"""
+Telos RNA-seq data-generation workflow.
+
+FASTQ + genome/annotation → sorted BAM → StringTie + IsoQuant/Scallop2 →
+gffcompare → bundle_manifest.yaml
+
+  snakemake -s workflow/Snakefile \\
+    --configfile workflow/config/config.example.yaml \\
+    --use-conda --cores 16
+"""
+
+from pathlib import Path
+
+import yaml
+
+BUNDLES_ROOT = Path(config["bundles_root"])
+THREADS = config.get("threads", {})
+TOOLS = {k: v for k, v in (config.get("tools") or {}).items() if v}
+
+MOD_DIR = {"sr": "sr", "cdna": "ont_cdna", "drna": "ont_drna", "pacbio": "pacbio"}
+DIR_TO_MOD = {v: k for k, v in MOD_DIR.items()}
+
+MINIMAP2 = {
+    "cdna": ("splice", ""),
+    "drna": ("splice", "-uf -k14"),
+    "pacbio": ("splice:hq", ""),
+}
+
+
+def _load_samples():
+    data = yaml.safe_load(Path(config["samples_file"]).read_text())
+    rows = data["samples"] if isinstance(data, dict) else data
+    out = []
+    for s in rows:
+        if s["modality"] not in MOD_DIR:
+            raise ValueError(f"Unknown modality {s['modality']!r}")
+        if s["ref_id"] not in config["references"]:
+            raise ValueError(f"Unknown ref_id {s['ref_id']!r}")
+        fq = s["fastq"]
+        fq = [fq] if isinstance(fq, str) else list(fq)
+        if s["modality"] == "sr" and len(fq) < 2:
+            raise ValueError(f"{s['sample_id']}: short-read samples need paired FASTQs [R1, R2]")
+        out.append({**s, "fastq": fq})
+    return out
+
+
+SAMPLES = _load_samples()
+SAMPLE_INDEX = {(s["ref_id"], s["modality"], s["sample_id"]): s for s in SAMPLES}
+
+wildcard_constraints:
+    mod_dir="sr|ont_cdna|ont_drna|pacbio",
+    assembler="stringtie|isoquant|scallop2",
+
+
+def P(tmpl):
+    return str(BUNDLES_ROOT / tmpl)
+
+
+def sample(wc):
+    return SAMPLE_INDEX[(wc.ref_id, DIR_TO_MOD[wc.mod_dir], wc.sample_id)]
+
+
+def refcfg(ref_id):
+    return config["references"][ref_id]
+
+
+def tool(name, default=None):
+    return str(TOOLS[name]) if name in TOOLS else (default or name)
+
+
+def work(wc):
+    return BUNDLES_ROOT / wc.ref_id / wc.mod_dir / wc.sample_id
+
+
+def is_long(wc):
+    return DIR_TO_MOD[wc.mod_dir] != "sr"
+
+
+def strand_arg(wc):
+    s = sample(wc).get("hisat2_strandness", config.get("hisat2_strandness"))
+    return f"--rna-strandness {s}" if s else ""
+
+
+def gffcompare_ref(ref_id):
+    """gffcompare-safe annotation (transcript+exon only), under genome/derived/<ref_id>/."""
+    return f"genome/derived/{ref_id}/annotation.gffcompare.gtf"
+
+
+rule all:
+    input:
+        [
+            P(f"{s['ref_id']}/{MOD_DIR[s['modality']]}/{s['sample_id']}/bundle_manifest.yaml")
+            for s in SAMPLES
+        ],
+
+
+# --- Genome ----------------------------------------------------------------
+
+rule genome_faidx:
+    input:
+        fasta=lambda wc: refcfg(wc.ref_id)["genome_fasta"],
+    output:
+        done="genome/derived/{ref_id}/faidx.done",
+    params:
+        samtools=tool("samtools"),
+    conda:
+        "envs/hisat2.yaml"
+    shell:
+        """
+        mkdir -p "$(dirname {output.done})"
+        {params.samtools} faidx {input.fasta}
+        touch {output.done}
+        """
+
+
+rule filter_ref_gtf:
+    """
+    Build a gffcompare-safe reference GTF from config ref_gtf.
+
+    Same filter as scripts/run_all_fastq_bundles.sh (RefSeq *.gffcmp.gtf):
+    keep transcript/exon lines that have both gene_id and transcript_id.
+    Drops gene (and CDS/UTR/etc.) rows that make gffcompare abort on some annotations.
+    """
+    input:
+        gtf=lambda wc: refcfg(wc.ref_id)["ref_gtf"],
+    output:
+        gtf="genome/derived/{ref_id}/annotation.gffcompare.gtf",
+    shell:
+        r"""
+        mkdir -p "$(dirname {output.gtf})"
+        awk 'BEGIN{{FS=OFS="\t"}}
+             /^#/ {{print; next}}
+             $3!="exon" && $3!="transcript" {{next}}
+             $9 ~ /gene_id/ && $9 ~ /transcript_id/ {{print}}' \
+          {input.gtf} > {output.gtf}
+        if [ ! -s {output.gtf} ]; then
+          echo "ERROR: filtered gffcompare GTF is empty: {output.gtf}" >&2
+          exit 1
+        fi
+        """
+
+
+rule hisat2_index:
+    """Plain HISAT2 genome index (.ht2). Splice-site/exon tables are not kept or required at align time."""
+    input:
+        fasta=lambda wc: refcfg(wc.ref_id)["genome_fasta"],
+        faidx_done="genome/derived/{ref_id}/faidx.done",
+    output:
+        done="genome/derived/{ref_id}/hisat2.done",
+    params:
+        prefix=lambda wc: refcfg(wc.ref_id)["hisat2_index_prefix"],
+        hisat2_build=tool("hisat2_build", "hisat2-build"),
+    conda:
+        "envs/hisat2.yaml"
+    threads: THREADS.get("hisat2_build", 8)
+    shell:
+        """
+        PREFIX="{params.prefix}"
+        mkdir -p "$(dirname "$PREFIX")" "$(dirname {output.done})"
+        {params.hisat2_build} -p {threads} {input.fasta} "$PREFIX"
+        touch {output.done}
+        """
+
+
+# --- Align -----------------------------------------------------------------
+
+rule align_long:
+    input:
+        fastqs=lambda wc: sample(wc)["fastq"],
+        fasta=lambda wc: refcfg(wc.ref_id)["genome_fasta"],
+        faidx_done=lambda wc: f"genome/derived/{wc.ref_id}/faidx.done",
+    output:
+        bam=P("{ref_id}/{mod_dir}/{sample_id}/align/aln.sorted.bam"),
+        bai=P("{ref_id}/{mod_dir}/{sample_id}/align/aln.sorted.bam.bai"),
+    wildcard_constraints:
+        mod_dir="ont_cdna|ont_drna|pacbio",
+    params:
+        minimap2=tool("minimap2"),
+        samtools=tool("samtools"),
+        ax=lambda wc: MINIMAP2[DIR_TO_MOD[wc.mod_dir]][0],
+        extra=lambda wc: MINIMAP2[DIR_TO_MOD[wc.mod_dir]][1],
+    conda:
+        "envs/minimap2.yaml"
+    threads: THREADS.get("align", 8)
+    shell:
+        """
+        {params.minimap2} -ax {params.ax} {params.extra} -t {threads} \
+          {input.fasta} {input.fastqs} \
+          | {params.samtools} sort --threads {threads} -o {output.bam} -
+        {params.samtools} index {output.bam}
+        """
+
+
+rule align_short:
+    input:
+        fastqs=lambda wc: sample(wc)["fastq"],
+        index_done=lambda wc: f"genome/derived/{wc.ref_id}/hisat2.done",
+    output:
+        bam=P("{ref_id}/{mod_dir}/{sample_id}/align/aln.sorted.bam"),
+        bai=P("{ref_id}/{mod_dir}/{sample_id}/align/aln.sorted.bam.bai"),
+    wildcard_constraints:
+        mod_dir="sr",
+    params:
+        hisat2=tool("hisat2"),
+        samtools=tool("samtools"),
+        index=lambda wc: refcfg(wc.ref_id)["hisat2_index_prefix"],
+        r1=lambda wc: sample(wc)["fastq"][0],
+        r2=lambda wc: sample(wc)["fastq"][1],
+        strand=lambda wc: strand_arg(wc),
+    conda:
+        "envs/hisat2.yaml"
+    threads: THREADS.get("align", 8)
+    shell:
+        """
+        {params.hisat2} -x {params.index} -p {threads} \
+          -1 {params.r1} -2 {params.r2} --dta {params.strand} \
+          | {params.samtools} sort --threads {threads} -o {output.bam} -
+        {params.samtools} index {output.bam}
+        """
+
+
+# --- Assemble --------------------------------------------------------------
+
+rule stringtie:
+    input:
+        bam=P("{ref_id}/{mod_dir}/{sample_id}/align/aln.sorted.bam"),
+    output:
+        gtf=P("{ref_id}/{mod_dir}/{sample_id}/stringtie.gtf"),
+    params:
+        stringtie=tool("stringtie"),
+        long_flag=lambda wc: "-L" if is_long(wc) else "",
+    conda:
+        "envs/stringtie.yaml"
+    threads: THREADS.get("assembly", 8)
+    shell:
+        "{params.stringtie} -p {threads} {params.long_flag} -o {output.gtf} {input.bam}"
+
+
+rule isoquant:
+    input:
+        bam=P("{ref_id}/{mod_dir}/{sample_id}/align/aln.sorted.bam"),
+        fasta=lambda wc: refcfg(wc.ref_id)["genome_fasta"],
+        faidx_done=lambda wc: f"genome/derived/{wc.ref_id}/faidx.done",
+    output:
+        gtf=P("{ref_id}/{mod_dir}/{sample_id}/isoquant.gtf"),
+    wildcard_constraints:
+        mod_dir="ont_cdna|ont_drna|pacbio",
+    params:
+        isoquant=tool("isoquant", "isoquant.py"),
+        data_type=lambda wc: "pacbio" if DIR_TO_MOD[wc.mod_dir] == "pacbio" else "nanopore",
+        work=lambda wc: str(work(wc) / "isoquant_work"),
+        update_script=str(Path(workflow.basedir) / "scripts" / "update_isoquant_tpm.py"),
+    conda:
+        "envs/isoquant.yaml"
+    threads: THREADS.get("isoquant", 32)
+    shell:
+        """
+        OUTDIR="{params.work}"
+        rm -rf "$OUTDIR"
+        mkdir -p "$OUTDIR"
+        {params.isoquant} --threads {threads} --reference {input.fasta} \
+          --bam {input.bam} --data_type {params.data_type} -o "$OUTDIR"
+        cp "$OUTDIR/OUT/OUT.transcript_models.gtf" {output.gtf}
+        python {params.update_script} \
+          --gtf {output.gtf} \
+          --tpm "$OUTDIR/OUT/OUT.transcript_model_tpm.tsv" \
+          --out-gtf {output.gtf}
+        rm -rf "$OUTDIR"
+        """
+
+
+rule scallop2:
+    input:
+        bam=P("{ref_id}/{mod_dir}/{sample_id}/align/aln.sorted.bam"),
+    output:
+        gtf=P("{ref_id}/{mod_dir}/{sample_id}/scallop2.gtf"),
+    wildcard_constraints:
+        mod_dir="sr",
+    params:
+        scallop2=tool("scallop2"),
+    conda:
+        "envs/scallop2.yaml"
+    shell:
+        "{params.scallop2} -i {input.bam} -o {output.gtf} >/dev/null 2>&1"
+
+
+# --- gffcompare (keep .tmap only) ------------------------------------------
+
+rule gffcompare:
+    input:
+        gtf=P("{ref_id}/{mod_dir}/{sample_id}/{assembler}.gtf"),
+        ref_gtf=lambda wc: gffcompare_ref(wc.ref_id),
+    output:
+        tmap=P("{ref_id}/{mod_dir}/{sample_id}/{assembler}.{assembler}.gtf.tmap"),
+    params:
+        gffcompare=tool("gffcompare"),
+        # Prefix path (no extension): stats/loci land beside it; .tmap lands beside query GTF.
+        prefix=lambda wc: str(work(wc) / wc.assembler),
+    conda:
+        "envs/gffcompare.yaml"
+    shell:
+        """
+        {params.gffcompare} -r {input.ref_gtf} -o {params.prefix} {input.gtf}
+        rm -f {params.prefix}.stats \
+              {params.prefix}.loci \
+              {params.prefix}.tracking \
+              {params.prefix}.annotated.gtf \
+              {params.prefix}.{wildcards.assembler}.gtf.refmap
+        """
+
+
+# --- Manifest --------------------------------------------------------------
+
+rule bundle_manifest:
+    input:
+        bam=P("{ref_id}/{mod_dir}/{sample_id}/align/aln.sorted.bam"),
+        stringtie=P("{ref_id}/{mod_dir}/{sample_id}/stringtie.gtf"),
+        stringtie_tmap=P("{ref_id}/{mod_dir}/{sample_id}/stringtie.stringtie.gtf.tmap"),
+        secondary=lambda wc: str(
+            work(wc) / ("isoquant.gtf" if is_long(wc) else "scallop2.gtf")
+        ),
+        secondary_tmap=lambda wc: str(
+            work(wc)
+            / (
+                "isoquant.isoquant.gtf.tmap"
+                if is_long(wc)
+                else "scallop2.scallop2.gtf.tmap"
+            )
+        ),
+        ref_gtf=lambda wc: gffcompare_ref(wc.ref_id),
+    output:
+        manifest=P("{ref_id}/{mod_dir}/{sample_id}/bundle_manifest.yaml"),
+    params:
+        script=str(Path(workflow.basedir) / "scripts" / "write_bundle_manifest.py"),
+        genome=lambda wc: refcfg(wc.ref_id)["genome_fasta"],
+        aligner=lambda wc: "minimap2" if is_long(wc) else "hisat2",
+        work=lambda wc: str(work(wc)),
+    shell:
+        """
+        python {params.script} \
+          --work-dir {params.work} \
+          --ref-id {wildcards.ref_id} \
+          --sample-id {wildcards.sample_id} \
+          --genome-fasta {params.genome} \
+          --ref-gtf {input.ref_gtf} \
+          --aligner {params.aligner}
+        """

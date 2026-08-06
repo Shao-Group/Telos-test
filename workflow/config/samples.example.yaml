@@ -1,0 +1,16 @@
+# Example samples for the Telos Snakemake workflow.
+# modality: sr | cdna | drna | pacbio
+# fastq: single path (long-read) or [R1, R2] (short-read paired)
+
+samples:
+  - sample_id: SRR307903
+    ref_id: GRCh38_gencode49
+    modality: sr
+    fastq:
+      - fastq/sr/SRR307903/SRR307903.sra_1.fastq
+      - fastq/sr/SRR307903/SRR307903.sra_2.fastq
+
+  - sample_id: ENCFF023EXJ
+    ref_id: GRCh38_gencode49
+    modality: cdna
+    fastq: fastq/cdna/ENCFF023EXJ.fastq

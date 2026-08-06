@@ -1,0 +1,34 @@
+# Telos RNA-seq data-generation config (example).
+# Paths are relative to the directory from which you run snakemake (repo root).
+
+bundles_root: data/bundles
+samples_file: workflow/config/samples.example.yaml
+
+# Optional default for short-read HISAT2 (--rna-strandness). Override per sample in samples file.
+hisat2_strandness: RF
+
+threads:
+  align: 16
+  assembly: 8
+  isoquant: 32
+  hisat2_build: 16
+
+references:
+  GRCh38_gencode49:
+    genome_fasta: genome/gencode/GRCh38.primary_assembly.genome.fa
+    # Raw annotation (may include gene/CDS/UTR). Pipeline writes a gffcompare-safe
+    # copy to genome/derived/<ref_id>/annotation.gffcompare.gtf (transcript+exon only).
+    ref_gtf: genome/gencode/gencode.v49.primary_assembly.basic.annotation.gtf
+    # Built by this workflow when any short-read sample uses this ref_id
+    hisat2_index_prefix: genome/derived/GRCh38_gencode49/hisat2/grch38_primary_gencode49
+
+# Optional absolute paths if conda packages are unavailable (leave empty/null to use conda env PATH).
+tools:
+  hisat2: null
+  hisat2_build: null
+  minimap2: null
+  samtools: null
+  stringtie: null
+  isoquant: null
+  scallop2: null
+  gffcompare: null
