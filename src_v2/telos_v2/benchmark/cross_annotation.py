@@ -52,6 +52,7 @@ def _build_cell_jobs(
     stage1: Path,
     dtypes: tuple[str, ...],
     anns: tuple[str, ...],
+    annotation_pairs: tuple[tuple[str, str], ...] | None,
     include_same_annotation: bool,
     only_same_annotation: bool,
     shared_train_subdir: str,
@@ -60,29 +61,33 @@ def _build_cell_jobs(
 ) -> list[BenchmarkCellJob]:
     jobs: list[BenchmarkCellJob] = []
     for dt in dtypes:
-        for tr in anns:
-            for te in anns:
+        if annotation_pairs:
+            pairs = annotation_pairs
+        else:
+            pairs = tuple((tr, te) for tr in anns for te in anns)
+        for tr, te in pairs:
+            if not annotation_pairs:
                 if only_same_annotation:
                     if tr != te:
                         continue
                 elif not include_same_annotation and tr == te:
                     continue
-                combo_id = f"{dt}__train_{tr}__test_{te}"
-                jobs.append(
-                    BenchmarkCellJob(
-                        combo_id=combo_id,
-                        data_type=dt,
-                        train_annotation=tr,
-                        test_annotation=te,
-                        combo_outdir=str((outdir / combo_id).resolve()),
-                        grid_outdir=str(outdir),
-                        shared_train_subdir=shared_train_subdir,
-                        bundles_root=str(root),
-                        stage1_config=str(stage1),
-                        max_parallel_tests=max_parallel_tests,
-                        save_pr_tables=save_pr_tables,
-                    )
+            combo_id = f"{dt}__train_{tr}__test_{te}"
+            jobs.append(
+                BenchmarkCellJob(
+                    combo_id=combo_id,
+                    data_type=dt,
+                    train_annotation=tr,
+                    test_annotation=te,
+                    combo_outdir=str((outdir / combo_id).resolve()),
+                    grid_outdir=str(outdir),
+                    shared_train_subdir=shared_train_subdir,
+                    bundles_root=str(root),
+                    stage1_config=str(stage1),
+                    max_parallel_tests=max_parallel_tests,
+                    save_pr_tables=save_pr_tables,
                 )
+            )
     return jobs
 
 
@@ -93,6 +98,7 @@ def run_cross_annotation_benchmarks(
     stage1_config: Path | None = None,
     data_types: tuple[str, ...] | None = None,
     annotations: tuple[str, ...] | None = None,
+    annotation_pairs: tuple[tuple[str, str], ...] | None = None,
     include_same_annotation: bool = False,
     only_same_annotation: bool = False,
     shared_train_subdir: str = SHARED_TRAIN_SUBDIR,
@@ -140,6 +146,7 @@ def run_cross_annotation_benchmarks(
         stage1=stage1,
         dtypes=dtypes,
         anns=anns,
+        annotation_pairs=annotation_pairs,
         include_same_annotation=include_same_annotation or only_same_annotation,
         only_same_annotation=only_same_annotation,
         shared_train_subdir=shared_train_subdir,
@@ -156,9 +163,21 @@ def run_cross_annotation_benchmarks(
             flush=True,
         )
 
+    pair_tests_by_train: dict[str, tuple[str, ...]] = {}
+    if annotation_pairs:
+        tmp: dict[str, list[str]] = {}
+        for tr, te in annotation_pairs:
+            tmp.setdefault(tr, []).append(te)
+        pair_tests_by_train = {tr: tuple(tes) for tr, tes in tmp.items()}
+
     probe_by_train: dict[tuple[str, str], str] = {}
-    for dt in dtypes:
-        for tr in anns:
+    for dt, tr in sorted({(j.data_type, j.train_annotation) for j in cell_jobs}):
+        if pair_tests_by_train:
+            tests = pair_tests_by_train.get(tr, ())
+            if not tests:
+                continue
+            probe_by_train[(dt, tr)] = tests[0]
+        else:
             probe_by_train[(dt, tr)] = probe_test_annotation(
                 tr,
                 anns,

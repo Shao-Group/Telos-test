@@ -22,6 +22,8 @@ import pandas as pd
 
 from telos_v2.plotting.grouped_aupr_bars import (
     DEFAULT_PLOT_V2_ROOT,
+    MOUSE_DATASET_GROUP_TITLES,
+    TISSUE_DATASET_GROUP_TITLES,
     apply_plot_style,
     load_benchmark_summaries,
     load_novel_summary,
@@ -32,11 +34,14 @@ from telos_v2.plotting.grouped_aupr_bars import (
 
 DEFAULT_CROSS_PAIRINGS: tuple[str, ...] = (
     "gencode->gencode",
-    "refseq->ensembl",
     "gencode->ensembl",
-    "refseq->gencode",
     "gencode->refseq",
+    "refseq->gencode",
+    "refseq->ensembl",
+    "refseq->refseq",
     "ensembl->gencode",
+    "ensembl->ensembl",
+    "ensembl->refseq",
 )
 
 # Phase-A novel-ref cross-annotation: only gencode→gencode (compare later vs cross_annotation_repro).
@@ -72,7 +77,12 @@ def run_mouse(root: Path, outdir: Path) -> None:
         root,
         row_filter=lambda d: _filter_train_test(d, "gencode", "mouse"),
     )
-    plot_benchmark_aupr_bars(df, outdir, long_csv_name="mouse_aupr_long.csv")
+    plot_benchmark_aupr_bars(
+        df,
+        outdir,
+        long_csv_name="mouse_aupr_long.csv",
+        group_title_overrides=MOUSE_DATASET_GROUP_TITLES,
+    )
 
 
 def run_tissue(root: Path, outdir: Path) -> None:
@@ -80,7 +90,12 @@ def run_tissue(root: Path, outdir: Path) -> None:
         root,
         row_filter=lambda d: _filter_train_test(d, "gencode", "tissue"),
     )
-    plot_benchmark_aupr_bars(df, outdir, long_csv_name="tissue_aupr_long.csv")
+    plot_benchmark_aupr_bars(
+        df,
+        outdir,
+        long_csv_name="tissue_aupr_long.csv",
+        group_title_overrides=TISSUE_DATASET_GROUP_TITLES,
+    )
 
 
 def run_cross_annotation(root: Path, outdir: Path, pairings: tuple[str, ...]) -> None:

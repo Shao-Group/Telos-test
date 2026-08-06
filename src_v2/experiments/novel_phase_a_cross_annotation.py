@@ -1,20 +1,18 @@
 """
-Phase A cross-annotation benchmarks: train on annotation only; evaluate tests against augmented ref.
+Phase A novel benchmarks: train on one annotation; evaluate tests against augmented ref.
 
 Training uses the standard matrix (original ``train.ref_gtf`` and train ``tmap``). Models are trained
 once per ``(data_type, train_annotation)`` under ``<outdir>/_phase_a_shared_train/<dt>__train_<anno>/``;
-each matrix cell then uses ``train.mode: skip`` with that ``model_dir`` when artifacts exist. Stage I
+each run then uses ``train.mode: skip`` with that ``model_dir`` when artifacts exist. Stage I
 feature reuse is controlled by ``stage1.feature_extraction.cache_dir`` in the Stage I YAML (or
 ``TELOS_STAGE1_CACHE_DIR``).
 
-For each test
-row, ``ref_gtf`` is replaced with the augmented reference for ``(test_ref_id, modality, sample)``
-(from ``augmented_refs_index.csv``), and ``tmap`` is replaced with a gffcompare ``.tmap`` produced
-by comparing the assembly GTF to that same augmented reference (from
-``augmented_tmaps_index.csv``, see ``generate_augmented_tmaps_all_bundles.py``). Stage I test AUPR,
-Stage II AUPR-on-tmap, and transcript PR then align with novel-inclusive reference + labels.
+For each test row, ``ref_gtf`` is replaced with the augmented reference for
+``(test_ref_id, modality, sample)`` (from ``augmented_refs_index.csv``), and ``tmap`` is replaced
+with a gffcompare ``.tmap`` vs that augmented reference (from ``augmented_tmaps_index.csv``).
 
-Usage:
+Usage (default: gencode train + gencode test, all data types):
+
   PYTHONPATH=src_v2 python src_v2/experiments/novel_phase_a_cross_annotation.py
 
 Prerequisite:
@@ -23,6 +21,7 @@ Prerequisite:
 Optional CLI overrides:
   PYTHONPATH=src_v2 python src_v2/experiments/novel_phase_a_cross_annotation.py \\
     --outdir runs/novel_phase_a_cross_annotation \\
+    --annotation-pair gencode-gencode \\
     --augmented-index runs/novel_ref_all/reports/augmented_refs_index.csv \\
     --augmented-tmap-index runs/novel_ref_all/reports/augmented_tmaps_index.csv
 """
@@ -48,6 +47,16 @@ from telos_v2.config_models import BenchmarkIO
 from telos_v2.config_validation import validate_benchmark_config
 
 PHASE_A_SHARED_TRAIN_SUBDIR = "_phase_a_shared_train"
+DEFAULT_ANNOTATION_PAIR = ("gencode", "gencode")
+
+
+def _parse_annotation_pair(raw: str) -> tuple[str, str]:
+    parts = raw.split("-", 1)
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise SystemExit(
+            f"invalid --annotation-pair {raw!r} (expected train-test, e.g. gencode-gencode)"
+        )
+    return parts[0], parts[1]
 
 
 def phase_a_shared_train_dir(outdir: Path, data_type: str, train_annotation: str) -> Path:
@@ -186,13 +195,21 @@ def run_phase_a_cross_annotation_benchmarks(
     bundles_root: Path | None,
     stage1_config: Path | None,
     data_types: tuple[str, ...],
-    annotations: tuple[str, ...],
-    include_same_annotation: bool,
+    annotation_pair: tuple[str, str] = DEFAULT_ANNOTATION_PAIR,
 ) -> int:
     root = resolve_bundles_root(bundles_root)
     stage1 = stage1_config if stage1_config is not None else default_stage1_config_path()
     if not stage1.is_file():
         print(f"[telos_v2] novel phase A: stage1 config not found: {stage1}")
+        return 2
+
+    tr, te = annotation_pair
+    bad = {a for a in (tr, te) if a not in ANNOTATION_TO_REF_ID}
+    if bad:
+        print(
+            f"[telos_v2] novel phase A: unknown annotation(s) in pair: "
+            f"{', '.join(sorted(bad))}"
+        )
         return 2
 
     ref_lookup = load_augmented_ref_lookup(augmented_index.resolve())
@@ -204,88 +221,82 @@ def run_phase_a_cross_annotation_benchmarks(
 
     rows: list[dict[str, str]] = []
     all_ok = True
-    total = 0
-    for dt in data_types:
+    test_ref_id = ANNOTATION_TO_REF_ID[te]
+    for total, dt in enumerate(data_types, start=1):
         modality = DATA_TYPE_TO_MODALITY[dt]
-        for tr in annotations:
-            for te in annotations:
-                if not include_same_annotation and tr == te:
-                    continue
-                total += 1
-                test_ref_id = ANNOTATION_TO_REF_ID[te]
-                combo_id = f"{dt}__train_{tr}__test_{te}__phase_a_novel_ref"
-                combo_outdir = outdir / combo_id
-                shared_parent = phase_a_shared_train_dir(outdir, dt, tr)
-                print(f"[telos_v2] novel phase A {total}: {combo_id}")
-                try:
-                    mapping = build_benchmark_yaml_mapping(
-                        data_type=dt,
-                        train_annotation=tr,
-                        test_annotation=te,
-                        bundles_root=root,
-                        stage1_config=stage1,
-                        train_outdir=shared_parent,
-                    )
-                    apply_phase_a_train_reuse(mapping, shared_train_parent=shared_parent)
-                    apply_phase_a_test_eval_paths(
-                        mapping,
-                        test_ref_id=test_ref_id,
-                        modality=modality,
-                        ref_lookup=ref_lookup,
-                        tmap_lookup=tmap_lookup,
-                    )
-                    validate_benchmark_config(mapping)
-                except (FileNotFoundError, ValueError, OSError) as exc:
-                    all_ok = False
-                    rows.append(
-                        {
-                            "run_id": combo_id,
-                            "data_type": dt,
-                            "train_annotation": tr,
-                            "test_annotation": te,
-                            "exit_code": "2",
-                            "status": "failed",
-                            "error": str(exc),
-                            "outdir": str(combo_outdir),
-                            "summary_csv": str(combo_outdir / "reports" / "benchmark_summary.csv"),
-                            "benchmark_yaml": "",
-                        }
-                    )
-                    print(f"[telos_v2] novel phase A setup failed: {exc}")
-                    continue
+        combo_id = f"{dt}__train_{tr}__test_{te}__phase_a_novel_ref"
+        combo_outdir = outdir / combo_id
+        shared_parent = phase_a_shared_train_dir(outdir, dt, tr)
+        print(f"[telos_v2] novel phase A {total}/{len(data_types)}: {combo_id}")
+        try:
+            mapping = build_benchmark_yaml_mapping(
+                data_type=dt,
+                train_annotation=tr,
+                test_annotation=te,
+                bundles_root=root,
+                stage1_config=stage1,
+                train_outdir=shared_parent,
+            )
+            apply_phase_a_train_reuse(mapping, shared_train_parent=shared_parent)
+            apply_phase_a_test_eval_paths(
+                mapping,
+                test_ref_id=test_ref_id,
+                modality=modality,
+                ref_lookup=ref_lookup,
+                tmap_lookup=tmap_lookup,
+            )
+            validate_benchmark_config(mapping)
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            all_ok = False
+            rows.append(
+                {
+                    "run_id": combo_id,
+                    "data_type": dt,
+                    "train_annotation": tr,
+                    "test_annotation": te,
+                    "exit_code": "2",
+                    "status": "failed",
+                    "error": str(exc),
+                    "outdir": str(combo_outdir),
+                    "summary_csv": str(combo_outdir / "reports" / "benchmark_summary.csv"),
+                    "benchmark_yaml": "",
+                }
+            )
+            print(f"[telos_v2] novel phase A setup failed: {exc}")
+            continue
 
-                combo_reports = combo_outdir / "reports"
-                combo_reports.mkdir(parents=True, exist_ok=True)
-                cfg_path = combo_reports / "generated_benchmark_phase_a.yaml"
-                header = (
-                    "# Phase A (novel eval): train uses original annotation; each test ref_gtf and tmap "
-                    "use augmented reference + gffcompare tmap for that (ref_id, modality, sample, assembler).\n"
-                    "# Train reuse: shared tree under benchmark outdir:_phase_a_shared_train/<dt>__train_<anno>/ "
-                    "(run once; other test_* cells use train.mode=skip + model_dir when present).\n"
-                    f"# augmented_index={augmented_index.resolve()}\n"
-                    f"# augmented_tmap_index={augmented_tmap_index.resolve()}\n\n"
-                )
-                cfg_path.write_text(
-                    header + benchmark_mapping_to_yaml_text(mapping),
-                    encoding="utf-8",
-                )
-                code = run_benchmark(BenchmarkIO(config=cfg_path, outdir=combo_outdir))
-                ok = code == 0
-                all_ok = all_ok and ok
-                rows.append(
-                    {
-                        "run_id": combo_id,
-                        "data_type": dt,
-                        "train_annotation": tr,
-                        "test_annotation": te,
-                        "exit_code": str(code),
-                        "status": "ok" if ok else "failed",
-                        "error": "",
-                        "outdir": str(combo_outdir),
-                        "summary_csv": str(combo_outdir / "reports" / "benchmark_summary.csv"),
-                        "benchmark_yaml": str(cfg_path),
-                    }
-                )
+        combo_reports = combo_outdir / "reports"
+        combo_reports.mkdir(parents=True, exist_ok=True)
+        cfg_path = combo_reports / "generated_benchmark_phase_a.yaml"
+        header = (
+            "# Phase A (novel eval): train uses original annotation; each test ref_gtf and tmap "
+            "use augmented reference + gffcompare tmap for that (ref_id, modality, sample, assembler).\n"
+            "# Train reuse: shared tree under benchmark outdir:_phase_a_shared_train/<dt>__train_<anno>/ "
+            "(run once; other test_* cells use train.mode=skip + model_dir when present).\n"
+            f"# augmented_index={augmented_index.resolve()}\n"
+            f"# augmented_tmap_index={augmented_tmap_index.resolve()}\n\n"
+        )
+        cfg_path.write_text(
+            header + benchmark_mapping_to_yaml_text(mapping),
+            encoding="utf-8",
+        )
+        code = run_benchmark(BenchmarkIO(config=cfg_path, outdir=combo_outdir))
+        ok = code == 0
+        all_ok = all_ok and ok
+        rows.append(
+            {
+                "run_id": combo_id,
+                "data_type": dt,
+                "train_annotation": tr,
+                "test_annotation": te,
+                "exit_code": str(code),
+                "status": "ok" if ok else "failed",
+                "error": "",
+                "outdir": str(combo_outdir),
+                "summary_csv": str(combo_outdir / "reports" / "benchmark_summary.csv"),
+                "benchmark_yaml": str(cfg_path),
+            }
+        )
 
     run_index = reports_dir / "novel_phase_a_runs.csv"
     with run_index.open("w", newline="", encoding="utf-8") as fh:
@@ -311,7 +322,9 @@ def run_phase_a_cross_annotation_benchmarks(
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Phase A cross-annotation benchmarks with augmented test ref_gtf.")
+    p = argparse.ArgumentParser(
+        description="Phase A novel benchmarks with augmented test ref_gtf (single annotation pair)."
+    )
     p.add_argument(
         "--outdir",
         type=Path,
@@ -343,9 +356,10 @@ def main() -> int:
         help="Stage I YAML (default: telos_v2 default)",
     )
     p.add_argument(
-        "--include-same-annotation",
-        action="store_true",
-        help="Include train_annotation == test_annotation cells",
+        "--annotation-pair",
+        default="gencode-gencode",
+        metavar="TRAIN-TEST",
+        help="Train/test annotation pair across all data types (default: gencode-gencode)",
     )
     args = p.parse_args()
     return run_phase_a_cross_annotation_benchmarks(
@@ -355,8 +369,7 @@ def main() -> int:
         bundles_root=args.bundles_root,
         stage1_config=args.stage1_config,
         data_types=("sr", "cdna", "drna", "pacbio"),
-        annotations=("refseq", "gencode", "ensembl"),
-        include_same_annotation=args.include_same_annotation,
+        annotation_pair=_parse_annotation_pair(args.annotation_pair),
     )
 
 

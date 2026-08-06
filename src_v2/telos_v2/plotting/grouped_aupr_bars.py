@@ -318,6 +318,35 @@ DATA_TYPE_TITLE: dict[str, str] = {
 # Consistent modality order on x-axis (matches v1 cross-annotation: PacBio → cDNA → dRNA → SR).
 DATA_TYPE_PLOT_ORDER: tuple[str, ...] = ("pacbio", "cdna", "drna", "sr")
 
+# Single-test mouse / tissue benchmarks: one accession per data_type (paper table).
+MOUSE_DATASET_ACCESSIONS: dict[str, str] = {
+    "cdna": "ENCFF683TBO",
+    "drna": "ENCFF765AEC",
+    "pacbio": "ENCFF874VSI",
+    "sr": "ENCSR982PLD",
+}
+
+TISSUE_DATASET_ACCESSIONS: dict[str, str] = {
+    "cdna": "SRR31255649",
+    "drna": "SRR36400176",
+    "pacbio": "ENCFF185VYD",
+    "sr": "ENCSR321PGV",
+}
+
+
+def build_dataset_group_titles(accessions: dict[str, str]) -> dict[str, str]:
+    """Top-of-plot group labels: accession on line 1, data-type title on line 2."""
+    out: dict[str, str] = {}
+    for dt, acc in accessions.items():
+        key = str(dt).strip().lower()
+        type_title = DATA_TYPE_TITLE.get(key, key)
+        out[key] = f"{acc}\n{type_title}"
+    return out
+
+
+MOUSE_DATASET_GROUP_TITLES = build_dataset_group_titles(MOUSE_DATASET_ACCESSIONS)
+TISSUE_DATASET_GROUP_TITLES = build_dataset_group_titles(TISSUE_DATASET_ACCESSIONS)
+
 
 def _group_title_for_key(group_key: str) -> str:
     key = str(group_key).strip().lower()
@@ -353,9 +382,16 @@ def sort_rows_for_plot(df: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
-def _add_group_labels_top(ax: plt.Axes, ordered: pd.DataFrame, x_pos: np.ndarray) -> None:
+def _add_group_labels_top(
+    ax: plt.Axes,
+    ordered: pd.DataFrame,
+    x_pos: np.ndarray,
+    *,
+    group_title_overrides: dict[str, str] | None = None,
+) -> None:
     """Data-type block titles above the plot (PacBio / cDNA / dRNA / Short Reads)."""
     group_col = "v1_group" if "v1_group" in ordered.columns else "data_type"
+    overrides = {str(k).lower(): v for k, v in (group_title_overrides or {}).items()}
     pos = 0
     for grp_key in _plot_group_order_keys(group_col):
         g = ordered[ordered[group_col].astype(str).str.lower() == grp_key]
@@ -365,7 +401,7 @@ def _add_group_labels_top(ax: plt.Axes, ordered: pd.DataFrame, x_pos: np.ndarray
         mid = (float(x_pos[pos]) + float(x_pos[pos + size - 1])) / 2.0
         if str(grp_key) in ("srr", "sr") and size >= _SR_GROUP_LABEL_SHIFT_MIN_SIZE:
             mid -= _SR_GROUP_LABEL_SHIFT_X
-        title = _group_title_for_key(str(grp_key))
+        title = overrides.get(str(grp_key).lower()) or _group_title_for_key(str(grp_key))
         ax.text(
             mid,
             _GROUP_LABEL_Y,
@@ -552,6 +588,7 @@ class BarPanel:
     rf_v: np.ndarray
     xgb_v: np.ndarray
     ordered: pd.DataFrame | None = None
+    group_title_overrides: dict[str, str] | None = None
 
 
 def _decorate_panel_groups(
@@ -560,6 +597,7 @@ def _decorate_panel_groups(
     x_pos: np.ndarray,
     *,
     draw_group_titles: bool,
+    group_title_overrides: dict[str, str] | None = None,
 ) -> None:
     group_col = "v1_group" if "v1_group" in ordered.columns else "data_type"
     group_sizes = [
@@ -570,7 +608,9 @@ def _decorate_panel_groups(
     for sep_x in _datatype_group_separators_x(x_pos, group_sizes):
         ax.axvline(sep_x, color="#888888", linestyle="--", linewidth=1.5, alpha=0.85, zorder=0)
     if draw_group_titles:
-        _add_group_labels_top(ax, ordered, x_pos)
+        _add_group_labels_top(
+            ax, ordered, x_pos, group_title_overrides=group_title_overrides
+        )
 
 
 def _render_panel_on_ax(
@@ -584,7 +624,13 @@ def _render_panel_on_ax(
 ) -> None:
     _plot_three_bars_at_positions(ax, x_pos, panel.base_v, panel.rf_v, panel.xgb_v)
     if panel.ordered is not None and not panel.ordered.empty:
-        _decorate_panel_groups(ax, panel.ordered, x_pos, draw_group_titles=draw_group_titles)
+        _decorate_panel_groups(
+            ax,
+            panel.ordered,
+            x_pos,
+            draw_group_titles=draw_group_titles,
+            group_title_overrides=panel.group_title_overrides,
+        )
     ymax = float(ylim_max) if ylim_max is not None else _aupr_ylim_max(
         panel.base_v, panel.rf_v, panel.xgb_v
     )
@@ -812,6 +858,7 @@ def plot_benchmark_aupr_bars(
     metric_specs: tuple[BenchmarkMetricSpec, ...] = CORE_BENCHMARK_METRICS,
     file_prefix: str = "",
     long_csv_name: str = "aupr_long.csv",
+    group_title_overrides: dict[str, str] | None = None,
 ) -> None:
     """Aggregate benchmark summaries; one stacked PNG (TSS / TES / transcript PR)."""
     outdir.mkdir(parents=True, exist_ok=True)
@@ -842,6 +889,7 @@ def plot_benchmark_aupr_bars(
                 rf_v=agg["rf"].to_numpy(dtype=float),
                 xgb_v=agg["xgb"].to_numpy(dtype=float),
                 ordered=agg,
+                group_title_overrides=group_title_overrides,
             )
         )
 

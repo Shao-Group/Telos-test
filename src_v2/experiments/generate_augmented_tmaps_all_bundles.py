@@ -13,13 +13,14 @@ and copies the resulting ``.tmap`` to a stable path::
 Writes ``augmented_tmaps_index.csv`` (default: next to the refs index) for use by
 ``novel_phase_a_cross_annotation.py`` to set each benchmark test's ``tmap``.
 
-Usage:
+Usage (default: gencode bundles only, ``GRCh38_gencode49``):
   PYTHONPATH=src_v2 python src_v2/experiments/generate_augmented_tmaps_all_bundles.py
 
   # optional
   PYTHONPATH=src_v2 python src_v2/experiments/generate_augmented_tmaps_all_bundles.py \\
     --refs-index runs/novel_ref_all/reports/augmented_refs_index.csv \\
-    --gffcompare-bin /path/to/gffcompare
+    --gffcompare-bin /path/to/gffcompare \\
+    --ref-ids GRCh38_gencode49 GRCh38_refseq_p14 GRCh38_ensembl115
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ import csv
 from pathlib import Path
 from typing import Any
 
+from telos_v2.benchmark.matrix import ANNOTATION_TO_REF_ID
 from telos_v2.evaluation.transcript_pr_pipeline import run_gffcompare
 
 
@@ -77,13 +79,21 @@ def run(
     refs_index: Path,
     tmap_index_out: Path,
     gffcompare_bin: str | None,
+    ref_ids: tuple[str, ...] | None = None,
 ) -> int:
+    allowed_ref_ids = (
+        tuple(ref_ids)
+        if ref_ids is not None
+        else (ANNOTATION_TO_REF_ID["gencode"],)
+    )
     ref_rows = _read_refs_index(refs_index.resolve())
     index_rows: list[dict[str, str]] = []
     for i, row in enumerate(ref_rows, start=1):
         if row.get("status", "").lower() != "ok":
             continue
         ref_id = row.get("ref_id", "")
+        if ref_id not in allowed_ref_ids:
+            continue
         modality = row.get("modality", "")
         sample = row.get("sample", "")
         mf_s = row.get("bundle_manifest", "")
@@ -240,6 +250,7 @@ def run(
     n_fail = sum(1 for r in index_rows if r["status"] == "failed")
     print("[telos_v2] augmented tmaps index complete")
     print(f"  refs_index={refs_index.resolve()}")
+    print(f"  ref_ids={','.join(allowed_ref_ids)}")
     print(f"  tmap_index={tmap_index_out.resolve()}")
     print(f"  per-assembler rows: ok={n_ok} failed={n_fail}")
     return 0 if n_fail == 0 else 1
@@ -265,6 +276,16 @@ def main() -> int:
         default=None,
         help="Optional gffcompare executable (else GFFCOMPARE env or PATH)",
     )
+    p.add_argument(
+        "--ref-ids",
+        nargs="+",
+        default=None,
+        metavar="REF_ID",
+        help=(
+            "Bundle ref_id values to process "
+            f"(default: gencode only = {ANNOTATION_TO_REF_ID['gencode']})"
+        ),
+    )
     args = p.parse_args()
     out_path = (
         args.tmap_index_out
@@ -275,6 +296,7 @@ def main() -> int:
         refs_index=args.refs_index,
         tmap_index_out=out_path,
         gffcompare_bin=args.gffcompare_bin,
+        ref_ids=tuple(args.ref_ids) if args.ref_ids is not None else None,
     )
 
 

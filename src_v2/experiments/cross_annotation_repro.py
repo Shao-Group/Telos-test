@@ -26,6 +26,12 @@ Rerun only same-annotation cells (after a cross-only grid), reusing shared train
     --outdir runs/cross_annotation_repro \\
     --only-same-annotation \\
     --max-parallel-cells 12 --max-parallel-trains 12 --max-parallel-tests 4 --total-cpus 80
+
+Run only specific train/test annotation pairs (all data types):
+
+  PYTHONPATH=src_v2 python src_v2/experiments/cross_annotation_repro.py \\
+    --outdir runs/cross_annotation_repro \\
+    --annotation-pairs gencode-refseq gencode-gencode
 """
 
 from __future__ import annotations
@@ -34,6 +40,20 @@ import argparse
 from pathlib import Path
 
 from telos_v2.benchmark.cross_annotation import run_cross_annotation_benchmarks
+
+
+def _parse_annotation_pairs(raw: list[str] | None) -> tuple[tuple[str, str], ...] | None:
+    if not raw:
+        return None
+    pairs: list[tuple[str, str]] = []
+    for item in raw:
+        parts = item.split("-", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise SystemExit(
+                f"invalid --annotation-pairs entry {item!r} (expected train-test, e.g. gencode-refseq)"
+            )
+        pairs.append((parts[0], parts[1]))
+    return tuple(pairs)
 
 
 def main() -> int:
@@ -57,6 +77,12 @@ def main() -> int:
         type=Path,
         default=None,
         help="Stage I YAML (default: telos_v2 default)",
+    )
+    p.add_argument(
+        "--annotation-pairs",
+        nargs="+",
+        metavar="TRAIN-TEST",
+        help="Run only these train/test pairs across all data types (e.g. gencode-refseq gencode-gencode)",
     )
     p.add_argument(
         "--include-same-annotation",
@@ -98,12 +124,15 @@ def main() -> int:
         help="Disable writing PR curve TSV tables (faster; AUPR still in benchmark_summary.csv)",
     )
     args = p.parse_args()
+    if args.annotation_pairs and args.only_same_annotation:
+        raise SystemExit("--annotation-pairs and --only-same-annotation are mutually exclusive")
     return run_cross_annotation_benchmarks(
         outdir=args.outdir,
         bundles_root=args.bundles_root,
         stage1_config=args.stage1_config,
         data_types=("sr", "cdna", "drna", "pacbio"),
         annotations=("refseq", "gencode", "ensembl"),
+        annotation_pairs=_parse_annotation_pairs(args.annotation_pairs),
         include_same_annotation=args.include_same_annotation,
         only_same_annotation=args.only_same_annotation,
         max_parallel_cells=int(args.max_parallel_cells),

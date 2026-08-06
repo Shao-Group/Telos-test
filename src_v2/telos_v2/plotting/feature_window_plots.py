@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 import numpy as np
+from typing import Optional
 import pandas as pd
 
 from telos_v2.analysis.stage1_importance import STAGE1_FEATURE_GROUP_ORDER
@@ -27,8 +28,12 @@ from telos_v2.plotting.grouped_aupr_bars import (
     MODEL_RF_LABEL,
     MODEL_XGB_LABEL,
     TRANSCRIPT_PR_AUC_DIVISOR,
+    _add_figure_side_ylabel,
     _add_metric_row_label_fig,
     _figure_legend,
+    _LEGEND_COLUMNSPACING,
+    _LEGEND_HANDLETEXTPAD,
+    _STACKED_LEFT,
     apply_plot_style,
 )
 
@@ -39,19 +44,22 @@ _FONT_LEGEND = 15
 _FONT_XLABEL = 14
 _FONT_MODALITY = 15
 _FONT_SECTION = 16
-_FONT_SIDE = 14
-# 8×1 stacked panels: TSS (PacBio→SR) then TES (PacBio→SR).
-_FI_FIG_W = 12.0
-_FI_PANEL_H = 2.2
-_FI_BAR_STEP = 1.45
-_FI_BAR_HEIGHT = 0.52
-_FI_SIDE_LABEL_X = 0.035
-_FI_SECTION_HEADER_X = 0.52
-_FI_SECTION_HEADER_PAD = 0.01
-_STACKED_HSPACE = 0.22
-_LEGEND_FIG_Y = 0.985
-_FI_TOP = 0.93
 _FI_SITE_TYPES = ("TSS", "TES")
+
+# Feature-importance stacked bars (4 rows × 2 cols). Layout mirrors grouped_aupr_bars stacked panels.
+_FI_STACKED_FIG_W = 12.0  # figure width (inches)
+_FI_STACKED_PANEL_H = 3.4  # height per data-type row (inches); increase if bars or x ticks feel cramped
+_FI_STACKED_FIG_PAD = 0.6  # extra figure height (inches) above row sum for legend margin
+_FI_STACKED_LEFT = _STACKED_LEFT  # left margin; room for shared y-label + second-column row labels
+_FI_STACKED_RIGHT = 0.99  # right margin
+_FI_STACKED_BOTTOM = 0.10  # bottom margin; room for lowest row's rotated feature tick labels
+_FI_STACKED_TOP = 0.88  # top of axes area; lower = more gap between legend and panels
+_FI_STACKED_HSPACE = 0.85  # vertical gap between data-type rows (larger = more separation)
+_FI_STACKED_WSPACE = 0.22  # horizontal gap between TSS and TES columns
+_FI_STACKED_LEGEND_Y = 0.995  # legend anchor y in figure coords (higher = closer to page top)
+_FI_STACKED_COL_HEADER_Y = 1.03  # TSS / TES column titles above top row (axes coords)
+_FI_STACKED_YLABEL = "Mean normalized importance"  # shared figure-level y-label (left column)
+_FI_VBAR_WIDTH = 0.72  # bar width in category units (0–1 scale on x positions)
 
 FI_GROUP_COLORS = {
     "read_alignment": "#4C78A8",
@@ -67,7 +75,7 @@ FI_GROUP_LABELS = {
     "soft_clip": "soft-clip",
     "nucleotide_composition": "nucleotide composition",
     "k3_statistics": "3-mer statistics",
-    "kmer_counts": "k-mer counts",
+    "kmer_counts": "3-mer counts",
     "other": "other",
 }
 
@@ -109,31 +117,34 @@ def _load_fi_long(fi_dir: Path) -> pd.DataFrame:
     return pd.read_csv(long_path, sep="\t")
 
 
-def _fi_panel_order() -> list[tuple[str, str]]:
-    """TSS × modalities, then TES × modalities."""
-    panels: list[tuple[str, str]] = []
-    for st in _FI_SITE_TYPES:
-        for dt in DATA_TYPE_PLOT_ORDER:
-            panels.append((st, dt))
-    return panels
-
-
 def _pretty_feature_name(name: str) -> str:
     """Human-readable feature labels (no truncation or mid-word breaks)."""
     s = str(name)
+    # return s
     for old, new in (
-        ("nucleotide_composition", "Nucleotide comp"),
-        ("read_alignment", "Alignment"),
-        ("soft_clip", "Soft clip"),
+        ("nucleotide_composition", "nucleotide comp"),
+        ("read_alignment", "read alignment"),
+        ("soft_clip", "soft clip"),
         ("k3_statistics", "3-mer stats"),
-        ("kmer_counts", "K-mer counts"),
+        ("k3_", ""),
+        ("kmer_counts", "3-mer counts"),
         ("upstream", "↑"),
         ("downstream", "↓"),
-        ("fraction", "Frac"),
-        ("gradient", "Grad"),
-        ("sharpness", "Sharp"),
-        ("coverage", "Cov"),
+        ("fraction", "frac"),
+        ("gradient", "grad"),
+        ("sharpness", "sharp"),
+        ("coverage", "cov"),
+        ("delta", "Δ"),
         ("_", " "),
+        ("five prime", "5'"),
+        ("three prime", "3'"),
+        ("degradation", "degrade"),
+        ("weighted", "wtd"),
+        ("read", "rd"),
+        ("coefficient", "coeff"),
+        ("variation", "var"),
+        ("variance", "var"),
+        ("frequent", "freq"),
     ):
         s = s.replace(old, new)
     return " ".join(s.split())
@@ -147,51 +158,13 @@ def _fi_heatmap_cmap() -> mcolors.LinearSegmentedColormap:
     return cmap
 
 
-def _fi_axis(axes: np.ndarray, idx: int) -> plt.Axes:
-    if axes.ndim == 2:
-        return axes[idx, 0]
-    return axes[idx]
-
-
-def _add_side_label(fig: plt.Figure, ax: plt.Axes, text: str) -> None:
-    pos = ax.get_position()
-    fig.text(
-        _FI_SIDE_LABEL_X,
-        pos.y0 + pos.height / 2,
-        text,
-        transform=fig.transFigure,
-        rotation=90,
-        ha="center",
-        va="center",
-        fontsize=_FONT_SIDE,
-        fontweight="bold",
-    )
-
-
-def _add_section_header(fig: plt.Figure, axes: np.ndarray, row_idx: int, text: str) -> None:
-    ax = _fi_axis(axes, row_idx)
-    pos = ax.get_position()
-    fig.text(
-        _FI_SECTION_HEADER_X,
-        pos.y1 + _FI_SECTION_HEADER_PAD,
-        text,
-        transform=fig.transFigure,
-        ha="center",
-        va="bottom",
-        fontsize=_FONT_SECTION,
-        fontweight="bold",
-    )
-
-
-def _fi_global_vmax(long_df: pd.DataFrame, *, backend: str) -> float:
+def _fi_global_vmax(long_df: pd.DataFrame, *, backend: str, data_type: str = "") -> float:
+    """Max normalized importance for y-limits; optional ``data_type`` scopes to one modality row."""
     sub = long_df[long_df["backend"].str.lower() == backend.lower()]
+    if data_type:
+        sub = sub[sub["data_type"].astype(str).str.lower() == data_type.strip().lower()]
     vals = pd.to_numeric(sub["importance_norm"], errors="coerce").dropna()
-    if vals.empty:
-        return 1.0
-    q = float(vals.quantile(0.99))
-    if not np.isfinite(q) or q <= 0:
-        q = float(vals.max())
-    return max(q, 0.01)
+    return vals.max()
 
 
 def _fi_union_feature_rows(
@@ -341,7 +314,7 @@ def plot_feature_importance_heatmap(
 ) -> None:
     """One PDF per model: TSS and TES heatmaps (features × modalities)."""
     apply_plot_style()
-    vmax = _fi_global_vmax(long_df, backend=backend)
+    vmax = _fi_global_vmax(long_df, backend=backend, data_type="")
     matrices: dict[str, pd.DataFrame] = {}
     groups: dict[str, dict[str, str]] = {}
     for st in _FI_SITE_TYPES:
@@ -427,6 +400,27 @@ def plot_feature_importance_heatmap(
         tbl.to_csv(out_pdf.with_suffix(".csv"), index=False, sep="\t")
 
 
+def _fi_stacked_legend(fig: plt.Figure) -> None:
+    """Feature-group legend in the top figure margin (mirrors grouped_aupr_bars ``_figure_legend``)."""
+    handles = [
+        mpatches.Patch(color=FI_GROUP_COLORS[g], label=FI_GROUP_LABELS.get(g, g))
+        for g in STAGE1_FEATURE_GROUP_ORDER
+    ]
+    fig.legend(
+        handles=handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, _FI_STACKED_LEGEND_Y),
+        bbox_transform=fig.transFigure,
+        ncol=3,
+        fontsize=_FONT_LEGEND,
+        frameon=True,
+        columnspacing=_LEGEND_COLUMNSPACING,
+        handletextpad=_LEGEND_HANDLETEXTPAD,
+        handlelength=1.6,
+        borderaxespad=0.0,
+    )
+
+
 def _fi_agg(
     long_df: pd.DataFrame,
     *,
@@ -461,72 +455,79 @@ def plot_feature_importance_stacked(
     avg_windows: bool = False,
 ) -> None:
     """
-    One PDF per model: 8×1 stacked panels — TSS (PacBio→SR) then TES (PacBio→SR).
+    One PDF per model: 4×2 grid — rows = data types, columns = TSS | TES.
+    Vertical bar charts of the top-N features per panel.
     """
     apply_plot_style()
-    panels = _fi_panel_order()
-    nrows = len(panels)
-    x_max = _fi_global_vmax(long_df, backend=backend) * 1.05
+    n_dt = len(DATA_TYPE_PLOT_ORDER)
+    n_st = len(_FI_SITE_TYPES)
 
+    fig_h = _FI_STACKED_PANEL_H * n_dt + _FI_STACKED_FIG_PAD
     fig, axes = plt.subplots(
-        nrows,
-        1,
-        figsize=(_FI_FIG_W, _FI_PANEL_H * nrows),
+        n_dt,
+        n_st,
+        figsize=(_FI_STACKED_FIG_W, fig_h),
         dpi=_BAR_DPI,
-        sharex=True,
+        sharey="row",
         squeeze=False,
     )
 
-    for idx, (st, dt) in enumerate(panels):
-        ax = _fi_axis(axes, idx)
-        cell = _fi_agg(
-            long_df, backend=backend, site_type=st, data_type=dt, avg_windows=avg_windows
-        )
-        cell = cell.nlargest(top_n, "importance_norm").sort_values("importance_norm", ascending=True)
-        if cell.empty:
-            ax.set_visible(False)
-            continue
-        y = np.arange(len(cell)) * _FI_BAR_STEP
-        colors = [FI_GROUP_COLORS.get(g, FI_GROUP_COLORS["other"]) for g in cell["group"]]
-        ax.barh(y, cell["importance_norm"], color=colors, height=_FI_BAR_HEIGHT)
-        ax.set_yticks(y)
-        ax.set_yticklabels(
-            [_pretty_feature_name(f) for f in cell["feature"]],
-            fontsize=_FONT_FEATURE_Y,
-            ha="right",
-        )
-        ax.tick_params(axis="y", labelsize=_FONT_FEATURE_Y, pad=4, length=0)
-        ax.tick_params(axis="x", labelsize=_FONT_TICK)
-        ymax = y[-1] + _FI_BAR_STEP * 0.55 if len(y) else _FI_BAR_STEP
-        ax.set_ylim(-_FI_BAR_STEP * 0.35, ymax)
-        ax.set_xlim(0, x_max)
-        ax.grid(axis="x", linestyle=":", alpha=0.35)
-        if idx < nrows - 1:
-            ax.tick_params(axis="x", labelbottom=False)
+    for i, dt in enumerate(DATA_TYPE_PLOT_ORDER):
+        y_max = _fi_global_vmax(long_df, backend=backend, data_type=dt) * 1.05
+        for j, st in enumerate(_FI_SITE_TYPES):
+            ax = axes[i, j]
+            cell = _fi_agg(
+                long_df, backend=backend, site_type=st, data_type=dt, avg_windows=avg_windows
+            )
+            cell = cell.nlargest(top_n, "importance_norm").sort_values(
+                "importance_norm", ascending=False
+            )
+            if cell.empty:
+                ax.set_visible(False)
+                continue
+            x = np.arange(len(cell))
+            colors = [FI_GROUP_COLORS.get(g, FI_GROUP_COLORS["other"]) for g in cell["group"]]
+            ax.bar(x, cell["importance_norm"], color=colors, width=_FI_VBAR_WIDTH)
+            ax.set_xticks(x)
+            ax.set_xticklabels(
+                [_pretty_feature_name(f) for f in cell["feature"]],
+                fontsize=_FONT_FEATURE_Y,
+                rotation=30,
+                ha="right",
+            )
+            ax.tick_params(axis="x", labelsize=_FONT_FEATURE_Y, length=0)
+            ax.tick_params(axis="y", labelsize=_FONT_TICK)
+            ax.set_ylim(0, y_max)
+            ax.set_ylabel("")
+            ax.grid(axis="y", linestyle=":", alpha=0.35)
+            if j > 0:
+                ax.tick_params(axis="y", labelleft=False)
+            if i == 0:
+                ax.text(
+                    0.5,
+                    _FI_STACKED_COL_HEADER_Y,
+                    st,
+                    transform=ax.transAxes,
+                    ha="center",
+                    va="bottom",
+                    fontsize=_FONT_SECTION,
+                    fontweight="bold",
+                )
 
-    _fi_axis(axes, nrows - 1).set_xlabel("Mean normalized importance", fontsize=_FONT_XLABEL)
-
-    handles = [
-        mpatches.Patch(color=FI_GROUP_COLORS[g], label=FI_GROUP_LABELS.get(g, g))
-        for g in STAGE1_FEATURE_GROUP_ORDER
-    ]
-    fig.legend(
-        handles=handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, _LEGEND_FIG_Y),
-        bbox_transform=fig.transFigure,
-        ncol=3,
-        fontsize=_FONT_LEGEND,
-        frameon=False,
+    fig.subplots_adjust(
+        left=_FI_STACKED_LEFT,
+        right=_FI_STACKED_RIGHT,
+        bottom=_FI_STACKED_BOTTOM,
+        top=_FI_STACKED_TOP,
+        hspace=_FI_STACKED_HSPACE,
+        wspace=_FI_STACKED_WSPACE,
     )
-    fig.subplots_adjust(left=0.25, right=0.98, bottom=0.06, top=_FI_TOP, hspace=0.15)
-
-    _add_section_header(fig, axes, 0, "TSS")
-    _add_section_header(fig, axes, len(DATA_TYPE_PLOT_ORDER), "TES")
-    for idx, (_st, dt) in enumerate(panels):
-        ax = _fi_axis(axes, idx)
-        if ax.get_visible():
-            _add_side_label(fig, ax, DATA_TYPE_TITLE.get(dt, dt))
+    _add_figure_side_ylabel(fig, _FI_STACKED_YLABEL)
+    for i, dt in enumerate(DATA_TYPE_PLOT_ORDER):
+        ax0 = axes[i, 0]
+        if ax0.get_visible():
+            _add_metric_row_label_fig(fig, ax0, DATA_TYPE_TITLE.get(dt, dt))
+    _fi_stacked_legend(fig)
 
     out_pdf = _pdf_path(out_path)
     out_pdf.parent.mkdir(parents=True, exist_ok=True)

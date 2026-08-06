@@ -174,7 +174,7 @@ def permutation_importance_stage1(
         X = X.iloc[idx].reset_index(drop=True)
         y = y.iloc[idx].reset_index(drop=True)
 
-    scorer = make_scorer(average_precision_score, needs_proba=True, response_method="predict_proba")
+    scorer = make_scorer(average_precision_score, response_method="predict_proba")
 
     result = permutation_importance(
         model,
