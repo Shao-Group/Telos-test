@@ -6,6 +6,8 @@ out/
 data_train/
 # configs/
 configs/paths.yaml
+scripts/parity/local.env
+.cursor/
 logs/
 # models/
 reports/

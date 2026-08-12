@@ -1,4 +1,4 @@
-name: irtesam-berth
+name: telos-repro
 channels:
   - conda-forge
   - bioconda
@@ -160,4 +160,3 @@ dependencies:
       - tqdm==4.67.1
       - pytest>=8.3
       - tzdata==2024.2
-prefix: /datadisk1/shared/tools/anaconda/install-2024.08/envs/irtesam-berth

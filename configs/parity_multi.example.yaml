@@ -1,0 +1,79 @@
+# Example multi-dataset smoke cell (sr, gencode→gencode).
+# 3 held-out samples × stringtie + scallop2 = 6 tests.
+# Paths are relative to the repo root (build bundles via docs/DATA.md first).
+#
+#   export TELOS_REPRO_BACKEND=telos
+#   export TELOS_BUNDLES_ROOT=$PWD/data/bundles
+#   PYTHONPATH=src:../Telos/src \
+#     python -m telos_repro.pipeline_cli benchmark \
+#       --config configs/parity_multi.example.yaml \
+#       --outdir runs/parity_multi
+#
+# Full script: scripts/parity/run_parity_multi_dataset_tmux.sh
+
+train:
+  mode: skip
+  model_dir: runs/cross_annotation_repro/_cross_annotation_shared_train/sr__train_gencode/models
+
+tests:
+  - id: SRR307911__stringtie
+    assembler_id: stringtie
+    bam: data/bundles/GRCh38_gencode49/sr/SRR307911/align/aln.sorted.bam
+    gtf: data/bundles/GRCh38_gencode49/sr/SRR307911/stringtie.gtf
+    ref_gtf: genome/gencode/gencode.v49.primary_assembly.basic.annotation.gtf
+    tmap: data/bundles/GRCh38_gencode49/sr/SRR307911/stringtie.stringtie.gtf.tmap
+    config: configs/stage1.defaults.yaml
+
+  - id: SRR307911__scallop2
+    assembler_id: scallop2
+    bam: data/bundles/GRCh38_gencode49/sr/SRR307911/align/aln.sorted.bam
+    gtf: data/bundles/GRCh38_gencode49/sr/SRR307911/scallop2.gtf
+    ref_gtf: genome/gencode/gencode.v49.primary_assembly.basic.annotation.gtf
+    tmap: data/bundles/GRCh38_gencode49/sr/SRR307911/scallop2.scallop2.gtf.tmap
+    config: configs/stage1.defaults.yaml
+
+  - id: SRR315323__stringtie
+    assembler_id: stringtie
+    bam: data/bundles/GRCh38_gencode49/sr/SRR315323/align/aln.sorted.bam
+    gtf: data/bundles/GRCh38_gencode49/sr/SRR315323/stringtie.gtf
+    ref_gtf: genome/gencode/gencode.v49.primary_assembly.basic.annotation.gtf
+    tmap: data/bundles/GRCh38_gencode49/sr/SRR315323/stringtie.stringtie.gtf.tmap
+    config: configs/stage1.defaults.yaml
+
+  - id: SRR315323__scallop2
+    assembler_id: scallop2
+    bam: data/bundles/GRCh38_gencode49/sr/SRR315323/align/aln.sorted.bam
+    gtf: data/bundles/GRCh38_gencode49/sr/SRR315323/scallop2.gtf
+    ref_gtf: genome/gencode/gencode.v49.primary_assembly.basic.annotation.gtf
+    tmap: data/bundles/GRCh38_gencode49/sr/SRR315323/scallop2.scallop2.gtf.tmap
+    config: configs/stage1.defaults.yaml
+
+  - id: SRR315334__stringtie
+    assembler_id: stringtie
+    bam: data/bundles/GRCh38_gencode49/sr/SRR315334/align/aln.sorted.bam
+    gtf: data/bundles/GRCh38_gencode49/sr/SRR315334/stringtie.gtf
+    ref_gtf: genome/gencode/gencode.v49.primary_assembly.basic.annotation.gtf
+    tmap: data/bundles/GRCh38_gencode49/sr/SRR315334/stringtie.stringtie.gtf.tmap
+    config: configs/stage1.defaults.yaml
+
+  - id: SRR315334__scallop2
+    assembler_id: scallop2
+    bam: data/bundles/GRCh38_gencode49/sr/SRR315334/align/aln.sorted.bam
+    gtf: data/bundles/GRCh38_gencode49/sr/SRR315334/scallop2.gtf
+    ref_gtf: genome/gencode/gencode.v49.primary_assembly.basic.annotation.gtf
+    tmap: data/bundles/GRCh38_gencode49/sr/SRR315334/scallop2.scallop2.gtf.tmap
+    config: configs/stage1.defaults.yaml
+
+execution:
+  stop_on_error: true
+
+analysis:
+  enabled: true
+  benchmark_mode: minimal
+  debug:
+    keep_pr_work: false
+  pr_vs_baseline:
+    enabled: true
+    measure: cov
+    save_pr_tables: false
+    plot: false

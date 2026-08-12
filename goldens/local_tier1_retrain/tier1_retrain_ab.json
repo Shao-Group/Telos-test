@@ -1,0 +1,47 @@
+{
+  "compare": {
+    "abs_tol": 1e-06,
+    "columns": [
+      "stage2_test_aupr_rf",
+      "stage2_test_aupr_xgb",
+      "stage2_test_aupr_baseline",
+      "transcript_pr_auc_model_rf",
+      "transcript_pr_auc_model_xgb",
+      "transcript_pr_auc_baseline"
+    ],
+    "diffs": [],
+    "missing_in_golden_keys": [],
+    "missing_local_keys": [],
+    "n_golden": 1,
+    "n_local": 1,
+    "ok": true,
+    "require_all_golden_keys": false
+  },
+  "golden": "/datadisk1/ixk5174/project_repo/Telos-repro/runs/parity_tier1_retrain/telos_v2/reports/benchmark_summary.csv",
+  "local": "/datadisk1/ixk5174/project_repo/Telos-repro/runs/parity_tier1_retrain/telos/reports/benchmark_summary.csv",
+  "note": "telos vs telos_v2 after retrain on upstream_downstream_ratio (data-cp test paths)",
+  "status": "ok",
+  "telos_metrics": {
+    "stage2_test_aupr_baseline": "0.67",
+    "stage2_test_aupr_rf": "0.78",
+    "stage2_test_aupr_xgb": "0.78",
+    "transcript_pr_auc_baseline": "452.43",
+    "transcript_pr_auc_model_rf": "528.91",
+    "transcript_pr_auc_model_xgb": "529.52"
+  },
+  "telos_missing_metrics": [],
+  "telos_rf_sha16": "bfcd00ea8f5f927f",
+  "telos_status": "ok",
+  "telos_v2_rf_sha16": "bfcd00ea8f5f927f",
+  "tier": "1_retrain_ab",
+  "v2_metrics": {
+    "stage2_test_aupr_baseline": "0.67",
+    "stage2_test_aupr_rf": "0.78",
+    "stage2_test_aupr_xgb": "0.78",
+    "transcript_pr_auc_baseline": "452.43",
+    "transcript_pr_auc_model_rf": "528.91",
+    "transcript_pr_auc_model_xgb": "529.52"
+  },
+  "v2_missing_metrics": [],
+  "v2_status": "ok"
+}

@@ -42,12 +42,8 @@ from telos.models.chrom_split import parse_split_policy
 CELL_RE = re.compile(
     r"^(?P<data_type>.+?)__train_(?P<train>refseq)__test_(?P<test>gencode|ensembl)$"
 )
-DEFAULT_GFFCOMPARE_BIN = (
-    "/datadisk1/shared/tools/gffcompare/gffcompare-0.11.2.Linux_x86_64/gffcompare"
-)
-
-
 def _resolve_gffcompare_bin(explicit: str | None, mapping: dict[str, Any]) -> str | None:
+    """Prefer explicit arg, then YAML, then GFFCOMPARE env / PATH (via pipeline resolver)."""
     if explicit and str(explicit).strip():
         return str(explicit).strip()
     analysis = mapping.get("analysis") or {}
@@ -56,12 +52,7 @@ def _resolve_gffcompare_bin(explicit: str | None, mapping: dict[str, Any]) -> st
         if isinstance(pr, dict):
             raw = pr.get("gffcompare_bin")
             if raw and str(raw).strip():
-                p = Path(str(raw))
-                if p.is_file():
-                    return str(p)
-    default = Path(DEFAULT_GFFCOMPARE_BIN)
-    if default.is_file():
-        return str(default)
+                return str(raw).strip()
     return None
 
 

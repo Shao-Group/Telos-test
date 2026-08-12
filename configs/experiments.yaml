@@ -1,0 +1,166 @@
+# Experiment + plot registry for `telos-repro`.
+# Drivers live under src/experiments/; paths from configs/paths.yaml.
+
+experiments:
+  cross_annotation_repro:
+    description: Cross-annotation benchmark grid with shared training axes.
+    kind: experiment
+    module: experiments.cross_annotation_repro
+    default_outdir: runs/cross_annotation_repro
+    golden_run_subdir: cross_annotation_repro
+    plot: cross_annotation
+    notes: >
+      Full paper grid is large. For Tier-1 parity prefer a small --annotation-pairs slice.
+
+  novel_phase_a_cross_annotation:
+    description: Phase-A novel benchmarks (augmented test ref; default gencode-gencode).
+    kind: experiment
+    module: experiments.novel_phase_a_cross_annotation
+    default_outdir: runs/novel_phase_a_cross_annotation
+    golden_run_subdir: novel_phase_a_cross_annotation
+    plot: novel_phase_a_cross
+    notes: Requires novel_ref_all augmented refs/tmaps indexes.
+
+  mouse_cross_species_gencode:
+    description: Human GENCODE models → mouse cross-species benchmarks.
+    kind: experiment
+    module: experiments.mouse_cross_species_human_gencode_train
+    default_outdir: runs/mouse_cross_species_gencode
+    golden_run_subdir: mouse_cross_species_gencode
+    plot: mouse
+    default_args: []
+    notes: Needs --human-root pointing at shared GENCODE train models.
+
+  tissue_human_gencode:
+    description: Human GENCODE models → tissue benchmarks.
+    kind: experiment
+    module: experiments.tissue_human_gencode_train
+    default_outdir: runs/tissue_human_gencode
+    golden_run_subdir: tissue_human_gencode
+    plot: tissue
+    notes: Needs --human-root pointing at shared GENCODE train models.
+
+  human_gencode_feature_window:
+    description: Stage I feature window_size sweep on human GENCODE bundles.
+    kind: experiment
+    module: experiments.human_gencode_feature_window_sweep
+    default_outdir: runs/human_gencode_feature_window
+    golden_run_subdir: human_gencode_feature_window
+    plot: window
+
+  stage1_feature_importance_gencode:
+    description: Stage I feature importance from GENCODE vs GENCODE benchmarks.
+    kind: experiment
+    module: experiments.stage1_feature_importance_gencode
+    outdir_arg: --run-root
+    default_outdir: runs/stage1_feature_importance_gencode
+    golden_run_subdir: stage1_feature_importance_gencode
+    summary_glob: null
+    plot: feature_importance
+
+  evaluate_refseq_novel:
+    description: RefSeq-novel metrics on a cross-annotation run root.
+    kind: experiment
+    module: experiments.evaluate_refseq_novel_cross_annotation
+    outdir_arg: --outdir
+    default_outdir: runs/refseq_novel_eval/reports
+    golden_run_subdir: refseq_novel_eval
+    summary_glob: null
+    plot: refseq_novel
+    notes: Pass --root to the cross-annotation run that holds RefSeq-trained models.
+
+  augment_novel_refs:
+    description: Build augmented reference GTFs for all bundle manifests.
+    kind: pipeline_step
+    module: experiments.augment_annotation_with_novel_all_bundles
+    outdir_arg: --out-root
+    default_outdir: runs/novel_ref_all
+    golden_run_subdir: novel_ref_all
+    summary_glob: null
+
+  generate_augmented_tmaps:
+    description: Generate gffcompare .tmap vs augmented refs for all bundles.
+    kind: pipeline_step
+    module: experiments.generate_augmented_tmaps_all_bundles
+    outdir_arg: null
+    default_outdir: null
+    summary_glob: null
+    notes: Typically takes --refs-index and --gffcompare-bin; see scripts/run_exp1.sh.
+
+plots:
+  cross_annotation:
+    description: Cross-annotation pairing AUPR bar PDFs.
+    plot_mode: cross-annotation
+    golden_figure_subdir: cross_annotation_repro
+    expected_outputs:
+      - plot_v2/cross_annotation_repro/gencode__to__gencode/aupr_bars_stringtie.pdf
+      - plot_v2/cross_annotation_repro/gencode__to__gencode/aupr_bars_other.pdf
+    default_args:
+      - --root
+      - runs/cross_annotation_repro
+
+  novel_phase_a_cross:
+    description: Phase-A gencode→gencode AUPR bars (augmented test ref).
+    plot_mode: novel-phase-a-cross
+    golden_figure_subdir: novel_phase_a_cross_annotation
+    expected_outputs:
+      - plot_v2/novel_phase_a_cross_annotation/gencode__to__gencode/aupr_bars_stringtie.pdf
+    default_args:
+      - --root
+      - runs/novel_phase_a_cross_annotation
+
+  mouse:
+    description: Mouse cross-species AUPR bar plots.
+    plot_mode: mouse
+    golden_figure_subdir: mouse_cross_species_gencode
+    expected_outputs:
+      - plot_v2/mouse_cross_species_gencode/
+    default_args:
+      - --root
+      - runs/mouse_cross_species_gencode
+
+  tissue:
+    description: Tissue AUPR bar plots.
+    plot_mode: tissue
+    golden_figure_subdir: tissue_human_gencode
+    expected_outputs:
+      - plot_v2/tissue_human_gencode/
+    default_args:
+      - --root
+      - runs/tissue_human_gencode
+
+  window:
+    description: Feature-window sweep stacked PDF.
+    plot_mode: window
+    golden_figure_subdir: human_gencode_feature_window
+    expected_outputs:
+      - plot_v2/human_gencode_feature_window/
+    default_args:
+      - --root
+      - runs/human_gencode_feature_window
+
+  feature_importance:
+    description: Stage I top-N feature-importance facet PDFs.
+    plot_mode: feature-importance
+    golden_figure_subdir: stage1_feature_importance_gencode
+    expected_outputs:
+      - plot_v2/stage1_feature_importance_gencode/
+    default_args:
+      - --root
+      - runs/stage1_feature_importance_gencode
+
+  refseq_novel:
+    description: RefSeq-novel evaluation bar plots.
+    plot_mode: refseq-novel
+    golden_figure_subdir: refseq_novel_eval
+    expected_outputs:
+      - plot_v2/refseq_novel_eval/
+    default_args:
+      - --reports
+      - runs/refseq_novel_eval/reports
+
+  all:
+    description: All standard benchmark / FI / window figures under plot_v2/.
+    plot_mode: all
+    expected_outputs:
+      - plot_v2/

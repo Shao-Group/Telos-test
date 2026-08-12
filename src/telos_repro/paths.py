@@ -68,6 +68,18 @@ def load_paths(repo_root: Path | None = None) -> dict[str, Any]:
 
 
 def path_value(paths: dict[str, Any], key: str) -> Path:
+    """Return a path from ``paths``. Relative entries resolve against ``repo_root``.
+
+    ``gffcompare_bin`` may be a bare command name (e.g. ``gffcompare``); those are
+    left unresolved so callers can put them on ``PATH`` / ``GFFCOMPARE``.
+    """
     if key not in paths or not paths[key]:
         raise KeyError(f"paths config missing {key!r}")
-    return Path(str(paths[key])).expanduser()
+    raw = str(paths[key]).strip()
+    p = Path(raw).expanduser()
+    if key == "gffcompare_bin" and not p.is_absolute() and len(p.parts) == 1:
+        return p
+    if not p.is_absolute():
+        root = Path(str(paths.get("repo_root", "."))).expanduser()
+        p = (root / p).resolve()
+    return p

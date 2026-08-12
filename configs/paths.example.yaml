@@ -1,0 +1,26 @@
+# Copy to configs/paths.yaml (gitignored) and edit for your machine.
+# Relative paths are resolved against the repository root.
+
+# Bundles after Snakemake (see docs/DATA.md), or any existing bundle tree:
+bundles_root: data/bundles
+genome_root: genome
+fastq_root: fastq
+
+# Writable outputs for this clone:
+runs_root: runs
+figures_root: plot_v2
+
+# Optional: reference summaries/figures for maintainer parity only
+# goldens_runs_root: /path/to/reference/runs
+# goldens_figures_root: /path/to/reference/plot_v2
+
+# Prefer a bare command on PATH, or an absolute path to the binary:
+gffcompare_bin: gffcompare
+
+# Optional Stage I feature cache directory (omit / leave unset to disable):
+# telos_stage1_cache_dir: runs/telos_stage1_feature_cache
+
+# Product Telos (sibling checkout is typical):
+backend: telos
+telos_checkout: ../Telos
+# telos_pin_sha: <optional commit SHA>

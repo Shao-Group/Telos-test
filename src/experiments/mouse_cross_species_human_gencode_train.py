@@ -85,7 +85,7 @@ def _default_analysis_block() -> dict[str, Any]:
             "filter_validation_chroms": True,
             "chromosomes_file": None,
             "save_pr_tables": True,
-            "gffcompare_bin": "/datadisk1/shared/tools/gffcompare/gffcompare-0.11.2.Linux_x86_64/gffcompare",
+            "gffcompare_bin": None,
         },
     }
 

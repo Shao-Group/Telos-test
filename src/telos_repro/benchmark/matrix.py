@@ -401,7 +401,8 @@ def build_benchmark_yaml_mapping(
                 "filter_validation_chroms": True,
                 "chromosomes_file": None,
                 "save_pr_tables": True,
-                "gffcompare_bin": "/datadisk1/shared/tools/gffcompare/gffcompare-0.11.2.Linux_x86_64/gffcompare",
+                # null → resolve via GFFCOMPARE env or gffcompare on PATH
+                "gffcompare_bin": None,
             },
         },
     }
