@@ -5,6 +5,8 @@ Self-contained workflow: FASTQ + genome/annotation → Telos bundles
 gffcompare `.tmap`, `bundle_manifest.yaml`). Intermediates (IsoQuant work dir,
 TPM TSV, gffcompare `.stats`/`.loci`/`.refmap`/etc.) are deleted after each step.
 
+**Accessions, download links, and public-data policy:** see [`docs/DATA.md`](../docs/DATA.md).
+
 ## Requirements
 
 - Snakemake ≥ 7 with conda support (`--use-conda`)

@@ -5,6 +5,7 @@ out/
 # features/
 data_train/
 # configs/
+configs/paths.yaml
 logs/
 # models/
 reports/
@@ -16,7 +17,6 @@ comp_analysis/
 plots_individual/
 src/comparative_analysis.py
 plots_individual_bc/
-docs/
 examples/
 fastq/
 genome/
@@ -25,3 +25,7 @@ schemas/
 tmp/
 *__pycache__/
 plot_v2/
+*.egg-info/
+.eggs/
+dist/
+build/

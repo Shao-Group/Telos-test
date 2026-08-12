@@ -1,97 +1,60 @@
-# Telos-test
+# Telos-repro
 
-This repository is dedicated for the experimentation of Telos. You should have all the packages required for Telos installed. Additionally, you must have [rnaseqtools](https://github.com/Shao-Group/rnaseqtools) and [GFFCompare](https://anaconda.org/bioconda/gffcompare) installed. 
+Paper **reproduction add-on** for product Telos. Telos trains and predicts; this repo adds
+experiments, benchmarking, plotting, golden parity, and FASTQ→bundle rebuild.
 
-## Quickstart
 
-You can reproduce the full training, testing, and plotting workflow with the provided script:
+| Role                     | Path                                                           |
+| ------------------------ | -------------------------------------------------------------- |
+| This repo                | `/datadisk1/ixk5174/project_repo/Telos-repro`                  |
+| Product Telos (pinned)   | `/datadisk1/ixk5174/project_repo/Telos`                        |
+| Frozen goldens / bundles | `/datadisk1/ixk5174/project_repo/Telos-test` (**do not edit**) |
+
+
+See `[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)`, `[docs/DATA.md](docs/DATA.md)`,
+`[docs/HANDOFF.md](docs/HANDOFF.md)`.
+
+## Setup
 
 ```bash
-./run-all.sh
+conda activate irtesam-berth
+pip install -e .
+cp configs/paths.example.yaml configs/paths.yaml
 ```
 
-Notes:
-- The script activates a Conda environment named `berth`. Adjust if your environment name differs.
-- Update any paths in your config as needed. The default config folder used is `project_config/`.
-
-## Manual usage
-
-Train on all training data:
-
 ```bash
-python src/train_all_data.py
+PYTHONPATH=src:/path/to/Telos/src python -m telos_repro list
 ```
 
-Test on evaluation datasets:
+
+
+## Commands
 
 ```bash
-python src/test_all.py
+telos train …
+telos predict …
+
+telos-repro list
+telos-repro status
+telos-repro run cross_annotation_repro -n
+telos-repro plot cross_annotation
+telos-repro parity 1 --local-summary runs/…/benchmark_summary.csv
 ```
-For both of this scripts, update the paths as necessary.
-
-Generate plots and summaries (aligns with `run-all.sh`):
-
-- Stage 1 PR curve
-
-  ```bash
-  python src/plotters/generate_stage1_pr_curve.py --config_folder project_config/
-  ```
-
-- Transcript-level PR curve (optionally add `--is_train` to use training data)
-
-  ```bash
-  python src/plotters/generate_transcript_pr_curve.py --config_folder project_config/
-  # python src/plotters/generate_transcript_pr_curve.py --config_folder project_config/ --is_train
-  ```
-
-- Venn diagram of methods (ground truth)
-
-  ```bash
-  python src/plotters/plot_venn.py --config_folder project_config/
-  ```
-
-- Venn diagram of predictions (per model)
-
-  ```bash
-  python src/plotters/plot_venn.py --config_folder project_config/ --is_predictions --model_type xgboost
-  python src/plotters/plot_venn.py --config_folder project_config/ --is_predictions --model_type randomforest
-  ```
-
-- For the Jaccard Similarity bar plot
-
-  ```bash
-  python src/plotters/plot_venn_barplot.py
-  ```
-
-- Aggregate transcript level AUPR results across runs
-
-  ```bash
-  python src/plotters/gather_auc_results.py --barplot_two_tools
-  ```
-
-- Plot Stage 1 AuPR Barplots
-
-  ```bash
-  python src/plotters/plot_stage1_aupr_barplot.py --generate_all
-  ```
-
-<!-- 
-Optional (commented in `run-all.sh`):
-
-```bash
-# python src/plotters/feature_importance_plot.py --config_folder project_config/
-# python src/plotters/calculate_true_false_stats.py
-# python src/plotters/generate_stage1_pr_curve.py --config_folder project_config/ --is_train
-``` -->
 
 
----
 
-## ✍️ Author
+## Layout
 
-Developed by [Shao Group](https://github.com/Shao-Group) .
+```text
+src/telos_repro/   CLI + paper benchmark/eval/plot + backend → telos
+src/experiments/   experiment drivers
+configs/           registry, paths, stage1, parity
+workflow/          FASTQ → bundles
+goldens/ figures/ docs/
+scripts/parity/ scripts/data/ scripts/legacy/
+```
 
 
----
 
-For help or issues, open an issue on GitHub or contact the author.
+## Public data
+
