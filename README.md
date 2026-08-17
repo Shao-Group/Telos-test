@@ -1,74 +1,75 @@
-# Telos paper reproduction
+# Telos — paper reproduction
 
-Reproduce the **Telos paper benchmarks and figures** on your machine.
+This repository reproduces the **Telos paper experiments and figures**.
 
-This repo orchestrates the experiment grid and plotting. Training and prediction
-come from the product [Telos](https://github.com/) package.
+Training and prediction use the product **Telos** package. This repo adds the
+benchmark grid, evaluation, and plotting so you can regenerate results end to end.
 
 ```text
-public FASTQ  →  bundles (BAM + assemblies + tmap)
-              →  telos-repro run <experiment>
-              →  runs/*/reports/benchmark_summary.csv
-              →  telos-repro plot <figure>  →  PDF
+FASTQ / public accessions  →  bundles (BAM, assembly GTF, tmap)
+                           →  telos train / predict  (via this repo’s runners)
+                           →  runs/*/reports/benchmark_summary.csv
+                           →  telos-repro plot …  →  PDF figures
 ```
 
 ---
 
-## Requirements
+## What you need
 
-- Python ≥ 3.10 and a conda/venv with Telos dependencies (pysam, scikit-learn,
-  xgboost, lightgbm, pandas, PyYAML, …)
-- A checkout of product **Telos** (sibling directory is fine)
-- [gffcompare](https://github.com/gpertea/gffcompare) on `PATH` (or set its path below)
-- [Snakemake](https://snakemake.readthedocs.io/) + conda (to build bundles from FASTQ)
-- Substantial disk and CPU for the full grid; start with a small slice (below)
+
+| Requirement                                         | Notes                                                                                     |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Python ≥ 3.10                                       | Conda env with Telos deps (pysam, scikit-learn, xgboost, lightgbm, pandas, PyYAML, …)     |
+| [Telos](https://github.com/) product checkout       | Pinned install or `PYTHONPATH=…/Telos/src`                                                |
+| [gffcompare](https://github.com/gpertea/gffcompare) | For transcript PR metrics                                                                 |
+| Compute                                             | Full cross-annotation grid is large (many BAM Stage I extracts); start with a small slice |
+
+
+Optional: an existing bundle tree if you already have aligned assemblies (skips FASTQ rebuild).
 
 ---
 
-## Quick start
-
-### 1. Install
+## 1. Install
 
 ```bash
 git clone <this-repo-url> Telos-repro
 cd Telos-repro
 
-# Product Telos next to this repo (or anywhere you prefer)
+# Product Telos (sibling checkout is fine)
 #   ../Telos
 
 conda activate <your-env>
-pip install -e .
-pip install -e ../Telos
-# Alternative to installing Telos editable:
-#   export PYTHONPATH="$PWD/src:../Telos/src:$PYTHONPATH"
+pip install -e .                    # provides `telos-repro`
+pip install -e ../Telos             # or: export PYTHONPATH="$PWD/src:../Telos/src:$PYTHONPATH"
 
 cp configs/paths.example.yaml configs/paths.yaml
 ```
 
-Edit `configs/paths.yaml` for your machine (this file is local; do not commit it):
+Edit `configs/paths.yaml` (local only; not committed):
 
 ```yaml
 telos_checkout: /absolute/path/to/Telos
-bundles_root:   /absolute/path/to/data/bundles   # after Snakemake
+bundles_root:   /absolute/path/to/data/bundles   # after Snakemake, or your existing bundles
 runs_root:      /absolute/path/to/Telos-repro/runs
 figures_root:   /absolute/path/to/Telos-repro/plot_v2
 gffcompare_bin: /absolute/path/to/gffcompare
 backend: telos
 ```
 
-Confirm the CLI:
+Check the registry:
 
 ```bash
 telos-repro list
 ```
 
-### 2. Build input bundles
+---
 
-Paper runs need per-sample **bundles**: aligned BAM, assembler GTFs, gffcompare
-`.tmap` files, and `bundle_manifest.yaml`.
+## 2. Prepare data (bundles)
 
-1. Download reads by accession — lists and layout in [`docs/DATA.md`](docs/DATA.md).
-2. Configure and run the Snakemake workflow:
+**Public path (recommended for outsiders):** download reads by accession, then build bundles.
+
+1. Follow accession lists and layout in `[docs/DATA.md](docs/DATA.md)`.
+2. Configure and run Snakemake:
 
 ```bash
 cp workflow/config/config.example.yaml workflow/config/config.yaml
@@ -80,29 +81,37 @@ snakemake -s workflow/Snakefile \
   --use-conda --cores 16
 ```
 
-3. Point `bundles_root` (or `export TELOS_BUNDLES_ROOT=…`) at the resulting
-   `data/bundles` tree.
+1. Point `bundles_root` (or `TELOS_BUNDLES_ROOT`) at the resulting
+  `data/bundles` tree.
 
-Details: [`docs/DATA.md`](docs/DATA.md), [`workflow/README.md`](workflow/README.md).
+Each sample directory should contain a BAM, assembler GTFs, gffcompare `.tmap`
+files, and `bundle_manifest.yaml` (see `docs/DATA.md`).
 
-### 3. Run an experiment
+---
 
-Experiments write under `runs/<experiment_id>/`. The CSV summaries are what the
-figures read.
+## 3. Run experiments (produce numeric results)
 
-**Main paper benchmark** (cross-annotation). Start with same-annotation
-gencode→gencode:
+Experiments write under `runs/<experiment_id>/` (CSV summaries drive the figures).
+
+### Cross-annotation grid (main paper benchmark)
+
+Dry-run one train→test pair:
 
 ```bash
-# Dry-run
 telos-repro run cross_annotation_repro -n -- \
   --annotation-pairs gencode-gencode
+```
 
-# Full run for that pair
+Run it (retrains shared models per modality, then scores held-out tests):
+
+```bash
+# Optional: disable Stage I feature disk cache for a fully fresh extract
+unset TELOS_STAGE1_CACHE_DIR
+
 telos-repro run cross_annotation_repro -- \
   --outdir runs/cross_annotation_repro \
   --annotation-pairs gencode-gencode \
-  --stage1-config configs/stage1.defaults.yaml \
+  --stage1-config configs/stage1.nocache.yaml \
   --max-parallel-trains 4 \
   --max-parallel-cells 4 \
   --max-parallel-tests 4 \
@@ -111,11 +120,13 @@ telos-repro run cross_annotation_repro -- \
 
 Useful slices:
 
-| Goal | Extra args |
-|------|------------|
-| One annotation pair | `--annotation-pairs gencode-gencode` |
-| Same-annotation diagonal only | `--only-same-annotation` |
-| Full cross-annotation grid | omit `--annotation-pairs` (large) |
+
+| Goal                                                     | Extra args                                                                                       |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Same-annotation only (gencode↔gencode, refseq↔refseq, …) | `--only-same-annotation`                                                                         |
+| Specific pairs                                           | `--annotation-pairs gencode-refseq gencode-ensembl`                                              |
+| Full cross grid (large)                                  | omit `--annotation-pairs` (default excludes same-annotation diagonal unless flags say otherwise) |
+
 
 Primary outputs:
 
@@ -125,93 +136,81 @@ runs/cross_annotation_repro/
   <modality>__train_<anno>__test_<anno>/reports/benchmark_summary.csv
 ```
 
-**Other paper experiments** (same pattern):
+### Other paper experiments
 
 ```bash
-telos-repro list -v          # ids, default outdirs, linked plots
-telos-repro status           # which summaries already exist locally
+telos-repro list          # ids + linked plots
+telos-repro status        # whether local summaries exist
 
 telos-repro run novel_phase_a_cross_annotation -- …
-telos-repro run mouse_cross_species_gencode -- …
-telos-repro run tissue_human_gencode -- …
 telos-repro run human_gencode_feature_window -- …
 telos-repro run stage1_feature_importance_gencode -- …
-telos-repro run evaluate_refseq_novel -- …
+# mouse / tissue / refseq-novel: see notes from `telos-repro list -v`
 ```
 
-### 4. Make figures
+Stage I settings: `configs/stage1.defaults.yaml` (or `configs/stage1.nocache.yaml`
+with `cache_dir: null`). That YAML is passed into product Telos as each job’s config.
 
-After the matching `runs/` summaries exist:
+---
+
+## 4. Make figures
+
+After summaries exist:
 
 ```bash
+# Cross-annotation AUPR bar PDFs
 telos-repro plot cross_annotation -- --root runs/cross_annotation_repro
 
-# Or regenerate every registered figure that has inputs
+# Or regenerate everything registered
 telos-repro plot all
 ```
 
-| Plot id | Typical `--root` / run dir |
-|---------|----------------------------|
-| `cross_annotation` | `runs/cross_annotation_repro` |
-| `novel_phase_a_cross` | `runs/novel_phase_a_cross_annotation` |
-| `mouse` | `runs/mouse_cross_species_gencode` |
-| `tissue` | `runs/tissue_human_gencode` |
-| `window` | `runs/human_gencode_feature_window` |
-| `feature_importance` | `runs/stage1_feature_importance_gencode` |
-| `refseq_novel` | `runs/refseq_novel_eval` |
 
-PDFs land under `plot_v2/` (or `figures_root` in `paths.yaml`). Command map:
-[`figures/CATALOG.md`](figures/CATALOG.md).
+| Plot id               | Typical source run                       |
+| --------------------- | ---------------------------------------- |
+| `cross_annotation`    | `runs/cross_annotation_repro`            |
+| `novel_phase_a_cross` | `runs/novel_phase_a_cross_annotation`    |
+| `mouse`               | `runs/mouse_cross_species_gencode`       |
+| `tissue`              | `runs/tissue_human_gencode`              |
+| `window`              | `runs/human_gencode_feature_window`      |
+| `feature_importance`  | `runs/stage1_feature_importance_gencode` |
+| `refseq_novel`        | `runs/refseq_novel_eval`                 |
 
-Numbers live in `benchmark_summary.csv`. Regenerated PDFs need not match a prior
-run byte-for-byte.
 
----
+PDFs go under `plot_v2/` (or `figures_root` from paths). Full map: `[figures/CATALOG.md](figures/CATALOG.md)`.
 
-## Experiment → figure map
-
-| Experiment (`telos-repro run …`) | Figure (`telos-repro plot …`) |
-|----------------------------------|-------------------------------|
-| `cross_annotation_repro` | `cross_annotation` |
-| `novel_phase_a_cross_annotation` | `novel_phase_a_cross` |
-| `mouse_cross_species_gencode` | `mouse` |
-| `tissue_human_gencode` | `tissue` |
-| `human_gencode_feature_window` | `window` |
-| `stage1_feature_importance_gencode` | `feature_importance` |
-| `evaluate_refseq_novel` | `refseq_novel` |
-
-Registry source: [`configs/experiments.yaml`](configs/experiments.yaml).
+Figure-driving numbers live in `benchmark_summary.csv`; PDF pixels need not match a prior run byte-for-byte.
 
 ---
 
-## How this relates to Telos
+## How Telos fits in
 
-| Layer | Role |
-|-------|------|
-| **Telos** (product) | `train` / `predict`, Stage I–II features and models |
-| **This repo** | Bundle matrix, shared-train grid, PR evaluation, CLI, plots |
 
-Orchestration calls Telos through `telos_repro.backend`. You do not need a second
-training stack. Package layout: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+| Layer               | Responsibility                                                         |
+| ------------------- | ---------------------------------------------------------------------- |
+| **Telos** (product) | `train` / `predict`, Stage I–II features & models                      |
+| **This repo**       | Bundle matrix, shared-train grid, PR evaluation, experiment CLI, plots |
+
+
+You do not need a second train stack. Orchestration calls Telos through
+`telos_repro.backend` (see `[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)`).
 
 ---
 
-## Repository layout
+## Layout
 
 ```text
-src/telos_repro/     CLI, Telos backend adapter, benchmark, evaluation, plotting
+src/telos_repro/     CLI, backend → Telos, benchmark, evaluation, plotting
 src/experiments/     Paper experiment entrypoints
-configs/             paths template, stage1 defaults, experiment registry
+configs/             paths template, stage1, experiment registry
 workflow/            FASTQ → bundles (Snakemake)
 figures/             Figure catalog
-docs/                Data accessions, architecture
+docs/                DATA, ARCHITECTURE, …
 ```
 
 ---
 
-## Further reading
+## More documentation
 
-- [`docs/DATA.md`](docs/DATA.md) — accessions, genomes, bundle layout  
-- [`workflow/README.md`](workflow/README.md) — Snakemake details  
-- [`figures/CATALOG.md`](figures/CATALOG.md) — plot commands and output paths  
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — what lives in this repo vs product Telos  
+- `[docs/DATA.md](docs/DATA.md)` — accessions, Snakemake, bundle layout  
+
